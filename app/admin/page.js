@@ -304,64 +304,72 @@ Player2,Crystal Maiden,radiant,2,8,15,50,5,250,300,8000,500,5000,7.2,5,Ancient 3
         <TabsContent value="replay" className="space-y-6">
           <Card>
             <CardHeader>
-              <CardTitle>Dota 2 Replay Upload - Coming Soon</CardTitle>
+              <CardTitle>Upload Dota 2 Replay (.dem)</CardTitle>
               <CardDescription>
-                Native .dem parsing requires complex dependencies. Use these alternatives for now:
+                Upload your .dem replay file and we'll automatically fetch the match data and populate your dashboard!
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="space-y-4">
-                <Alert>
-                  <Film className="h-4 w-4" />
-                  <AlertDescription>
-                    <strong>Recommended: Use OpenDota</strong>
-                    <div className="mt-2 space-y-2 text-sm">
-                      <p>1. Upload your replay to <a href="https://www.opendota.com/request" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">OpenDota.com/request</a></p>
-                      <p>2. Wait 2-5 minutes for parsing</p>
-                      <p>3. Download match data from their API</p>
-                      <p>4. Format as CSV and upload here</p>
-                    </div>
-                  </AlertDescription>
-                </Alert>
-              </div>
+              <form onSubmit={handleReplayUpload} className="space-y-4">
+                <div className="flex items-center space-x-4">
+                  <Input
+                    type="file"
+                    accept=".dem"
+                    onChange={(e) => setFile(e.target.files?.[0] || null)}
+                    disabled={uploading}
+                  />
+                  <Button type="submit" disabled={!file || uploading}>
+                    {uploading ? (
+                      <>
+                        <Upload className="mr-2 h-4 w-4 animate-spin" />
+                        Processing...
+                      </>
+                    ) : (
+                      <>
+                        <Film className="mr-2 h-4 w-4" />
+                        Upload & Import
+                      </>
+                    )}
+                  </Button>
+                </div>
+                {uploading && (
+                  <div className="text-sm text-gray-600">
+                    ⏳ Fetching match data from OpenDota... This usually takes 5-10 seconds.
+                  </div>
+                )}
+              </form>
             </CardContent>
           </Card>
 
           <Card>
             <CardHeader>
-              <CardTitle>Alternative: Manual Conversion</CardTitle>
+              <CardTitle>How It Works</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="space-y-3 text-sm text-gray-600">
-                <p><strong>Option 1: OpenDota Parser</strong></p>
-                <p>Upload to <a href="https://www.opendota.com/request" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">OpenDota</a> and export the data</p>
-                
-                <p className="mt-4"><strong>Option 2: Stratz</strong></p>
-                <p>Use <a href="https://stratz.com" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">Stratz.com</a> to analyze your replays</p>
-
-                <p className="mt-4"><strong>Option 3: Match ID</strong></p>
-                <p>If you have the Match ID from the .dem filename (e.g., <code className="bg-gray-100 px-1 rounded">8823519575.dem</code>), you can look it up on OpenDota or Dotabuff and export the stats.</p>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle>Your Uploaded File</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-2">
-                <p className="text-sm font-medium">Match ID: 8823519575</p>
-                <p className="text-sm text-gray-600">File Size: 65.3 MB</p>
-                <div className="mt-4">
-                  <a 
-                    href="https://www.opendota.com/matches/8823519575" 
-                    target="_blank" 
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-                  >
-                    View on OpenDota →
-                  </a>
+                <div className="flex items-start space-x-2">
+                  <CheckCircle className="w-4 h-4 text-green-600 mt-0.5" />
+                  <div>
+                    <strong>Extract Match ID:</strong> We read the match ID from your .dem filename
+                  </div>
+                </div>
+                <div className="flex items-start space-x-2">
+                  <CheckCircle className="w-4 h-4 text-green-600 mt-0.5" />
+                  <div>
+                    <strong>Fetch from OpenDota:</strong> Automatically retrieve full match data via API
+                  </div>
+                </div>
+                <div className="flex items-start space-x-2">
+                  <CheckCircle className="w-4 h-4 text-green-600 mt-0.5" />
+                  <div>
+                    <strong>Auto-Populate:</strong> All players, stats, and match data inserted into your database
+                  </div>
+                </div>
+                <div className="flex items-start space-x-2">
+                  <CheckCircle className="w-4 h-4 text-green-600 mt-0.5" />
+                  <div>
+                    <strong>Instant Results:</strong> Leaderboard updates immediately with the new match
+                  </div>
                 </div>
               </div>
             </CardContent>
@@ -369,25 +377,44 @@ Player2,Crystal Maiden,radiant,2,8,15,50,5,250,300,8000,500,5000,7.2,5,Ancient 3
 
           <Card>
             <CardHeader>
-              <CardTitle>Why CSV Upload is Better (For Now)</CardTitle>
+              <CardTitle>Requirements</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="space-y-2 text-sm text-gray-600">
-                <div className="flex items-start space-x-2">
-                  <CheckCircle className="w-4 h-4 text-green-600 mt-0.5 flex-shrink-0" />
-                  <div><strong>Full Control:</strong> Choose exactly which stats to include</div>
+                <p>✅ <strong>Filename format:</strong> Your .dem file must be named with the match ID (e.g., <code className="bg-gray-100 px-1 rounded">8823519575.dem</code>)</p>
+                <p>✅ <strong>Match on OpenDota:</strong> The match should already be parsed by OpenDota (most matches are automatically parsed)</p>
+                <p>✅ <strong>Active season:</strong> You need an active season in your database</p>
+                <p className="mt-4 text-xs text-gray-500">
+                  💡 If a match isn't on OpenDota yet, upload it to <a href="https://www.opendota.com/request" target="_blank" className="text-blue-600 hover:underline">OpenDota.com/request</a> first, wait 2-5 minutes, then upload the .dem file here!
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>What Gets Imported</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-2 gap-3 text-sm">
+                <div>
+                  <p className="font-semibold mb-2">Match Data:</p>
+                  <ul className="space-y-1 text-gray-600">
+                    <li>• Match duration</li>
+                    <li>• Winner (Radiant/Dire)</li>
+                    <li>• Match date & time</li>
+                  </ul>
                 </div>
-                <div className="flex items-start space-x-2">
-                  <CheckCircle className="w-4 h-4 text-green-600 mt-0.5 flex-shrink-0" />
-                  <div><strong>Batch Upload:</strong> Upload multiple matches at once</div>
-                </div>
-                <div className="flex items-start space-x-2">
-                  <CheckCircle className="w-4 h-4 text-green-600 mt-0.5 flex-shrink-0" />
-                  <div><strong>Reliable:</strong> Works every time with no parsing errors</div>
-                </div>
-                <div className="flex items-start space-x-2">
-                  <CheckCircle className="w-4 h-4 text-green-600 mt-0.5 flex-shrink-0" />
-                  <div><strong>Fast:</strong> No waiting for parsing, instant upload</div>
+                <div>
+                  <p className="font-semibold mb-2">Player Stats:</p>
+                  <ul className="space-y-1 text-gray-600">
+                    <li>• Kills, Deaths, Assists</li>
+                    <li>• GPM, XPM</li>
+                    <li>• Last hits, Denies</li>
+                    <li>• Hero damage, Tower damage</li>
+                    <li>• Hero healing</li>
+                    <li>• Performance score</li>
+                  </ul>
                 </div>
               </div>
             </CardContent>
