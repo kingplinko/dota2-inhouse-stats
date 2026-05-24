@@ -33,62 +33,21 @@ export async function POST(request) {
       return await importMatchData(matchData, matchId, file.name)
     }
 
-    // Step 2: Submit replay to OpenDota for parsing
-    console.log('Match not found. Submitting to OpenDota for parsing...')
-    const fileBuffer = Buffer.from(await file.arrayBuffer())
-    
-    const uploadForm = new FormData()
-    uploadForm.append('replay_blob', fileBuffer, {
-      filename: file.name,
-      contentType: 'application/octet-stream'
-    })
-
-    const uploadResponse = await fetch('https://api.opendota.com/api/request/submit', {
-      method: 'POST',
-      body: uploadForm,
-      headers: uploadForm.getHeaders()
-    })
-
-    if (!uploadResponse.ok) {
-      const errorText = await uploadResponse.text()
-      console.error('OpenDota upload failed:', errorText)
-      return NextResponse.json({ 
-        error: 'Failed to submit replay to OpenDota',
-        details: errorText,
-        tip: 'The replay file may be invalid or too large'
-      }, { status: 500 })
-    }
-
-    const uploadResult = await uploadResponse.json()
-    console.log('Upload result:', uploadResult)
-
-    // Step 3: Poll for parsing completion
-    console.log('Polling for parse completion...')
-    let attempts = 0
-    const maxAttempts = 30 // 30 attempts = ~2.5 minutes
-    
-    while (attempts < maxAttempts) {
-      await sleep(5000) // Wait 5 seconds between checks
-      
-      const pollResponse = await fetch(checkUrl)
-      if (pollResponse.ok) {
-        console.log('Parsing complete! Importing data...')
-        const matchData = await pollResponse.json()
-        return await importMatchData(matchData, matchId, file.name)
-      }
-      
-      attempts++
-      console.log(`Polling attempt ${attempts}/${maxAttempts}...`)
-    }
-
-    // Parsing is taking too long
-    return NextResponse.json({
+    // Step 2: Match not found - provide upload instructions
+    console.log('Match not found on OpenDota')
+    return NextResponse.json({ 
       success: false,
-      message: 'Replay submitted to OpenDota but parsing is taking longer than expected.',
+      error: 'Match not found on OpenDota',
       matchId: matchId,
-      tip: 'Check back in a few minutes and upload the .dem file again, or visit OpenDota.com directly.',
-      status: 'parsing'
-    })
+      uploadUrl: `https://www.opendota.com/request#${matchId}`,
+      instructions: {
+        step1: `Go to: https://www.opendota.com/request#${matchId}`,
+        step2: 'Upload your .dem file there (it takes 2-5 minutes to parse)',
+        step3: 'Come back here and upload the same .dem file again',
+        step4: 'It will import instantly once OpenDota has parsed it!'
+      },
+      tip: 'OpenDota needs to parse the replay first. This is a one-time step per match.'
+    }, { status: 404 })
 
   } catch (error) {
     console.error('Replay processing error:', error)

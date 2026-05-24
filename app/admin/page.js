@@ -149,25 +149,12 @@ export default function AdminPage() {
     }
 
     setUploading(true)
-    setMessage('📤 Uploading replay file...')
+    setMessage('📤 Uploading and checking match...')
     setMessageType('info')
 
     try {
       const formData = new FormData()
       formData.append('file', file)
-
-      // Update message for different stages
-      setTimeout(() => {
-        if (uploading) setMessage('🔍 Checking if match is already parsed...')
-      }, 2000)
-
-      setTimeout(() => {
-        if (uploading) setMessage('⚡ Submitting to OpenDota for parsing...')
-      }, 5000)
-
-      setTimeout(() => {
-        if (uploading) setMessage('⏳ Waiting for OpenDota to parse replay... (this may take 1-2 minutes)')
-      }, 10000)
 
       const response = await fetch('/api/upload-replay', {
         method: 'POST',
@@ -176,20 +163,38 @@ export default function AdminPage() {
 
       const result = await response.json()
 
-      if (!response.ok) {
-        throw new Error(result.error || 'Upload failed')
-      }
-
-      if (result.status === 'parsing') {
-        setMessage(result.message + ' Your match will appear on the leaderboard shortly!')
+      if (result.success) {
+        setMessage(result.message || '🎉 Match imported successfully! Check the leaderboard!')
+        setMessageType('success')
+        setFile(null)
+        e.target.reset()
+      } else if (result.instructions) {
+        // Match not on OpenDota yet
+        const matchId = result.matchId
+        setMessage(
+          <div className="space-y-3">
+            <p className="font-semibold">Match not on OpenDota yet! Here's what to do:</p>
+            <ol className="list-decimal list-inside space-y-2 text-sm">
+              <li>Go to <a href={result.uploadUrl} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline font-medium">OpenDota Upload Page</a></li>
+              <li>Upload your .dem file there (takes 2-5 minutes to parse)</li>
+              <li>Come back here and upload the same .dem file again</li>
+              <li>It will import instantly! ⚡</li>
+            </ol>
+            <a 
+              href={result.uploadUrl} 
+              target="_blank" 
+              rel="noopener noreferrer"
+              className="inline-block mt-2 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+            >
+              Upload to OpenDota Now →
+            </a>
+          </div>
+        )
         setMessageType('info')
       } else {
-        setMessage(result.message || 'Replay processed and imported successfully! Check the leaderboard! 🎉')
-        setMessageType('success')
+        throw new Error(result.error || 'Upload failed')
       }
       
-      setFile(null)
-      e.target.reset()
     } catch (error) {
       console.error('Replay upload error:', error)
       setMessage(`Error: ${error.message}`)
