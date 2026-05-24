@@ -149,7 +149,7 @@ export default function AdminPage() {
     }
 
     setUploading(true)
-    setMessage('📤 Uploading and checking match...')
+    setMessage('📤 Uploading and checking match type...')
     setMessageType('info')
 
     try {
@@ -168,26 +168,39 @@ export default function AdminPage() {
         setMessageType('success')
         setFile(null)
         e.target.reset()
-      } else if (result.instructions) {
-        // Match not on OpenDota yet
-        const matchId = result.matchId
+      } else if (result.matchType === 'private_lobby') {
+        // It's an inhouse match - guide to CSV upload
         setMessage(
           <div className="space-y-3">
-            <p className="font-semibold">Match not on OpenDota yet! Here's what to do:</p>
-            <ol className="list-decimal list-inside space-y-2 text-sm">
-              <li>Go to <a href={result.uploadUrl} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline font-medium">OpenDota Upload Page</a></li>
-              <li>Upload your .dem file there (takes 2-5 minutes to parse)</li>
-              <li>Come back here and upload the same .dem file again</li>
-              <li>It will import instantly! ⚡</li>
-            </ol>
-            <a 
-              href={result.uploadUrl} 
-              target="_blank" 
-              rel="noopener noreferrer"
-              className="inline-block mt-2 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
-            >
-              Upload to OpenDota Now →
-            </a>
+            <p className="font-semibold">✅ Private/Inhouse Match Detected!</p>
+            <p className="text-sm">Match ID: {result.matchId}</p>
+            <p className="text-sm">{result.message}</p>
+            <div className="bg-blue-50 border border-blue-200 rounded p-3 mt-2">
+              <p className="font-semibold text-sm mb-2">📋 Solution: Use CSV Upload</p>
+              <ol className="list-decimal list-inside space-y-1 text-sm">
+                {result.solution.steps.map((step, i) => (
+                  <li key={i}>{step}</li>
+                ))}
+              </ol>
+            </div>
+            <div className="flex space-x-2 mt-3">
+              <button
+                onClick={() => {
+                  const csvTab = document.querySelector('[value="csv"]')
+                  if (csvTab) csvTab.click()
+                }}
+                className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+              >
+                Go to CSV Upload →
+              </button>
+              <a 
+                href={result.csvTemplate}
+                download
+                className="px-4 py-2 bg-gray-600 text-white rounded hover:bg-gray-700"
+              >
+                Download CSV Template
+              </a>
+            </div>
           </div>
         )
         setMessageType('info')

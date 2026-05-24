@@ -21,35 +21,44 @@ export async function POST(request) {
     const matchId = file.name.replace('.dem', '')
     console.log(`Processing match ID: ${matchId}`)
 
-    // Fetch match data from Steam API
+    // Fetch match data from Steam API first
     const steamApiKey = process.env.STEAM_API_KEY
     const steamUrl = `https://api.steampowered.com/IDOTA2Match_570/GetMatchDetails/v1/?match_id=${matchId}&key=${steamApiKey}`
     
     console.log('Fetching match data from Steam API...')
     const steamResponse = await fetch(steamUrl)
     
-    if (!steamResponse.ok) {
-      return NextResponse.json({ 
-        error: 'Failed to fetch match from Steam API',
-        tip: 'The match may be private or not available. Try a public ranked match.',
-        matchId: matchId
-      }, { status: 404 })
+    if (steamResponse.ok) {
+      const steamData = await steamResponse.json()
+      
+      if (steamData.result) {
+        console.log('Match found on Steam API! Importing...')
+        const matchData = steamData.result
+        return await importMatchData(matchData, matchId, file.name)
+      }
     }
 
-    const steamData = await steamResponse.json()
+    // Steam API didn't have it - it's a private/inhouse match
+    console.log('Match not on Steam API - private/inhouse match detected')
     
-    if (!steamData.result) {
-      return NextResponse.json({ 
-        error: 'Invalid response from Steam API',
-        matchId: matchId
-      }, { status: 500 })
-    }
-
-    const matchData = steamData.result
-    console.log('Match data retrieved successfully!')
-
-    // Import match data
-    return await importMatchData(matchData, matchId, file.name)
+    return NextResponse.json({ 
+      success: false,
+      matchType: 'private_lobby',
+      matchId: matchId,
+      message: 'This appears to be a private lobby/inhouse match.',
+      solution: {
+        method: 'CSV Upload',
+        description: 'Private lobby matches are not available via Steam API. Please use CSV upload instead.',
+        steps: [
+          'Go to the CSV Upload tab',
+          'Create a CSV with your match data (or use the template)',
+          'Upload the CSV file',
+          'All stats will be imported!'
+        ]
+      },
+      tip: 'For inhouse leagues, CSV upload gives you full control over the data and works for ALL match types.',
+      csvTemplate: '/sample_matches.csv'
+    }, { status: 404 })
 
   } catch (error) {
     console.error('Replay processing error:', error)
