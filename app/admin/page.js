@@ -224,6 +224,25 @@ export default function AdminPage() {
         <p className="text-gray-600 mt-1">Upload match data via CSV or replay files</p>
       </div>
 
+      {/* Parser Service Warning Banner */}
+      <Alert className="bg-yellow-50 border-yellow-300 border-2">
+        <div className="flex items-start space-x-3">
+          <div className="text-yellow-600 text-2xl">⚠️</div>
+          <div className="flex-1">
+            <div className="font-semibold text-yellow-900">Parser Service Required for .dem Files</div>
+            <div className="text-sm text-yellow-800 mt-1">
+              .dem replay parsing requires an external parser microservice to extract match statistics. 
+              Until connected, <strong>CSV upload is the working method</strong> to populate leaderboard data.
+            </div>
+            <div className="mt-2 flex space-x-4">
+              <a href="/replays" className="text-sm text-blue-600 hover:underline font-medium">
+                → View Replay Upload Status
+              </a>
+            </div>
+          </div>
+        </div>
+      </Alert>
+
       {message && (
         <Alert variant={messageType === 'error' ? 'destructive' : 'default'}>
           {messageType === 'success' ? (
@@ -341,137 +360,29 @@ Player2,Crystal Maiden,radiant,2,8,15,50,5,250,300,8000,500,5000,7.2,5,Ancient 3
         <TabsContent value="replay" className="space-y-6">
           <Card>
             <CardHeader>
-              <CardTitle>Upload Dota 2 Replay (.dem) - Fully Automated!</CardTitle>
+              <CardTitle>Replay Upload Moved</CardTitle>
               <CardDescription>
-                Just upload your .dem file and we'll handle everything automatically - parsing, data extraction, and database import!
+                For .dem replay file uploads, please use the dedicated Replays page.
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <form onSubmit={handleReplayUpload} className="space-y-4">
-                <div className="flex items-center space-x-4">
-                  <Input
-                    type="file"
-                    accept=".dem"
-                    onChange={(e) => setFile(e.target.files?.[0] || null)}
-                    disabled={uploading}
-                  />
-                  <Button type="submit" disabled={!file || uploading}>
-                    {uploading ? (
-                      <>
-                        <Upload className="mr-2 h-4 w-4 animate-spin" />
-                        Processing...
-                      </>
-                    ) : (
-                      <>
-                        <Film className="mr-2 h-4 w-4" />
-                        Upload & Auto-Import
-                      </>
-                    )}
-                  </Button>
-                </div>
-                {uploading && (
-                  <div className="text-sm text-gray-600 space-y-1">
-                    <p className="flex items-center space-x-2">
-                      <span className="animate-pulse">⏳</span>
-                      <span>Processing your replay... This takes 1-2 minutes.</span>
-                    </p>
-                    <p className="text-xs text-gray-500">We're automatically submitting to OpenDota, waiting for parsing, then importing all data.</p>
-                  </div>
-                )}
-              </form>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle>How It Works - 100% Automated</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-3 text-sm text-gray-600">
-                <div className="flex items-start space-x-2">
-                  <CheckCircle className="w-4 h-4 text-green-600 mt-0.5" />
-                  <div>
-                    <strong>Step 1:</strong> You upload the .dem file
-                  </div>
-                </div>
-                <div className="flex items-start space-x-2">
-                  <CheckCircle className="w-4 h-4 text-green-600 mt-0.5" />
-                  <div>
-                    <strong>Step 2:</strong> We automatically submit it to OpenDota for parsing
-                  </div>
-                </div>
-                <div className="flex items-start space-x-2">
-                  <CheckCircle className="w-4 h-4 text-green-600 mt-0.5" />
-                  <div>
-                    <strong>Step 3:</strong> We wait for parsing to complete (1-2 minutes)
-                  </div>
-                </div>
-                <div className="flex items-start space-x-2">
-                  <CheckCircle className="w-4 h-4 text-green-600 mt-0.5" />
-                  <div>
-                    <strong>Step 4:</strong> We automatically fetch all match data
-                  </div>
-                </div>
-                <div className="flex items-start space-x-2">
-                  <CheckCircle className="w-4 h-4 text-green-600 mt-0.5" />
-                  <div>
-                    <strong>Step 5:</strong> All players and stats are inserted into your database
-                  </div>
-                </div>
-                <div className="flex items-start space-x-2">
-                  <CheckCircle className="w-4 h-4 text-green-600 mt-0.5" />
-                  <div>
-                    <strong>Step 6:</strong> Leaderboard updates instantly - Done! 🎉
-                  </div>
-                </div>
-                <p className="mt-4 text-xs bg-blue-50 p-3 rounded border border-blue-200">
-                  💡 <strong>No manual work required!</strong> Just upload and wait. Everything else happens automatically.
+              <div className="space-y-4">
+                <p className="text-sm text-gray-600">
+                  The replay upload system has been moved to its own dedicated page with enhanced tracking and status monitoring.
                 </p>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle>Requirements</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-2 text-sm text-gray-600">
-                <p>✅ <strong>Filename format:</strong> Your .dem file must be named with the match ID (e.g., <code className="bg-gray-100 px-1 rounded">8823519575.dem</code>)</p>
-                <p>✅ <strong>File size:</strong> Typical replay files are 50-200MB (this is normal)</p>
-                <p>✅ <strong>Active season:</strong> You need an active season in your database</p>
-                <p>✅ <strong>Internet connection:</strong> We need to communicate with OpenDota's API</p>
-                <p className="mt-4 text-xs text-gray-500">
-                  ⚡ <strong>Already parsed replays:</strong> If the match is already on OpenDota, import is instant (5 seconds)!
-                </p>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle>What Gets Imported</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-2 gap-3 text-sm">
-                <div>
-                  <p className="font-semibold mb-2">Match Data:</p>
-                  <ul className="space-y-1 text-gray-600">
-                    <li>• Match duration</li>
-                    <li>• Winner (Radiant/Dire)</li>
-                    <li>• Match date & time</li>
-                  </ul>
-                </div>
-                <div>
-                  <p className="font-semibold mb-2">Player Stats:</p>
-                  <ul className="space-y-1 text-gray-600">
-                    <li>• Kills, Deaths, Assists</li>
-                    <li>• GPM, XPM</li>
-                    <li>• Last hits, Denies</li>
-                    <li>• Hero damage, Tower damage</li>
-                    <li>• Hero healing</li>
-                    <li>• Performance score</li>
-                  </ul>
+                <a
+                  href="/replays"
+                  className="inline-flex items-center px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium"
+                >
+                  <Film className="mr-2 h-5 w-5" />
+                  Go to Replay Upload Page →
+                </a>
+                <div className="mt-6 p-4 bg-gray-50 rounded-lg border border-gray-200">
+                  <p className="text-sm font-semibold text-gray-700 mb-2">💡 Note:</p>
+                  <p className="text-sm text-gray-600">
+                    Replay parsing requires an external parser microservice. Until it's connected, 
+                    continue using CSV upload (this tab) to populate match data.
+                  </p>
                 </div>
               </div>
             </CardContent>

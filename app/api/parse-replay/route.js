@@ -37,11 +37,11 @@ export async function POST(request) {
       process.env.SUPABASE_SECRET_KEY
     )
 
-    // Step 1: Update status to "parsing"
-    console.log('[Step 1] Updating status to parsing...')
+    // Step 1: Update status to "parser_pending" (not "parsing" since parser isn't connected)
+    console.log('[Step 1] Updating status to parser_pending...')
     await supabase
       .from('replay_uploads')
-      .update({ status: 'parsing' })
+      .update({ status: 'parser_pending' })
       .eq('id', uploadId)
 
     // Step 2: Download .dem file from Supabase Storage
@@ -77,9 +77,9 @@ export async function POST(request) {
       await supabase
         .from('replay_uploads')
         .update({ 
-          status: 'uploaded',
+          status: 'parser_pending',
           match_id: matchId,
-          error_message: parserError.message
+          error_message: 'Parser service not connected'
         })
         .eq('id', uploadId)
 
@@ -87,9 +87,8 @@ export async function POST(request) {
 
       return NextResponse.json({
         success: true,
-        status: 'uploaded',
-        message: 'Replay uploaded successfully',
-        note: parserError.message,
+        status: 'parser_pending',
+        message: 'Replay uploaded successfully, but stats have not been extracted yet because the parser service is not connected.',
         matchId: matchId
       })
     }

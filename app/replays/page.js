@@ -76,8 +76,8 @@ export default function ReplayUploadPage() {
       }).catch(err => console.error('Parse trigger error:', err))
 
       // Show success immediately
-      setUploadStatus('parsing')
-      setMessage('✅ Replay uploaded successfully! Parsing in background...')
+      setUploadStatus('parser_pending')
+      setMessage('✅ Replay uploaded successfully, but stats have not been extracted yet because the parser service is not connected.')
       setMessageType('success')
 
       setFile(null)
@@ -97,8 +97,9 @@ export default function ReplayUploadPage() {
     switch (uploadStatus) {
       case 'uploading':
       case 'uploaded':
-      case 'parsing':
         return <Loader2 className="h-5 w-5 animate-spin text-blue-600" />
+      case 'parser_pending':
+        return <Clock className="h-5 w-5 text-yellow-600" />
       case 'complete':
         return <CheckCircle className="h-5 w-5 text-green-600" />
       case 'failed':
@@ -114,8 +115,8 @@ export default function ReplayUploadPage() {
         return 'Uploading to storage...'
       case 'uploaded':
         return 'Uploaded successfully! Ready for parsing.'
-      case 'parsing':
-        return 'File uploaded - parser implementation pending'
+      case 'parser_pending':
+        return 'Upload complete - parser service not connected'
       case 'complete':
         return 'Complete! Match imported to leaderboard.'
       case 'failed':
@@ -131,6 +132,25 @@ export default function ReplayUploadPage() {
         <h1 className="text-3xl font-bold text-gray-900">Replay Upload</h1>
         <p className="text-gray-600 mt-1">Upload .dem files for automatic parsing</p>
       </div>
+
+      {/* Parser Service Warning Banner */}
+      <Alert className="bg-yellow-50 border-yellow-300 border-2">
+        <div className="flex items-start space-x-3">
+          <div className="text-yellow-600 text-2xl">⚠️</div>
+          <div className="flex-1">
+            <div className="font-semibold text-yellow-900">Parser Service Required</div>
+            <div className="text-sm text-yellow-800 mt-1">
+              .dem replay parsing requires an external parser microservice to extract match statistics. 
+              Until connected, <strong>use CSV upload to populate leaderboard data</strong>.
+            </div>
+            <div className="mt-2">
+              <a href="/admin" className="text-sm text-blue-600 hover:underline font-medium">
+                → Go to CSV Upload
+              </a>
+            </div>
+          </div>
+        </div>
+      </Alert>
 
       {message && (
         <Alert variant={messageType === 'error' ? 'destructive' : 'default'}>
