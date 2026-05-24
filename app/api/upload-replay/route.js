@@ -1,10 +1,8 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
-import FormData from 'form-data'
-import fetch from 'node-fetch'
 
 export const runtime = 'nodejs'
-export const maxDuration = 300
+export const maxDuration = 60
 
 export async function POST(request) {
   try {
@@ -19,41 +17,44 @@ export async function POST(request) {
       return NextResponse.json({ error: 'Invalid file type. Please upload a .dem file' }, { status: 400 })
     }
 
+    // Extract match ID from filename
     const matchId = file.name.replace('.dem', '')
     console.log(`Processing match ID: ${matchId}`)
 
-    // Step 1: Check if already parsed on OpenDota
-    console.log('Checking if match already exists on OpenDota...')
-    const checkUrl = `https://api.opendota.com/api/matches/${matchId}`
-    const checkResponse = await fetch(checkUrl)
+    // Fetch match data from Steam API
+    const steamApiKey = process.env.STEAM_API_KEY
+    const steamUrl = `https://api.steampowered.com/IDOTA2Match_570/GetMatchDetails/v1/?match_id=${matchId}&key=${steamApiKey}`
     
-    if (checkResponse.ok) {
-      console.log('Match already parsed! Importing directly...')
-      const matchData = await checkResponse.json()
-      return await importMatchData(matchData, matchId, file.name)
+    console.log('Fetching match data from Steam API...')
+    const steamResponse = await fetch(steamUrl)
+    
+    if (!steamResponse.ok) {
+      return NextResponse.json({ 
+        error: 'Failed to fetch match from Steam API',
+        tip: 'The match may be private or not available. Try a public ranked match.',
+        matchId: matchId
+      }, { status: 404 })
     }
 
-    // Step 2: Match not found - provide upload instructions
-    console.log('Match not found on OpenDota')
-    return NextResponse.json({ 
-      success: false,
-      error: 'Match not found on OpenDota',
-      matchId: matchId,
-      uploadUrl: `https://www.opendota.com/request#${matchId}`,
-      instructions: {
-        step1: `Go to: https://www.opendota.com/request#${matchId}`,
-        step2: 'Upload your .dem file there (it takes 2-5 minutes to parse)',
-        step3: 'Come back here and upload the same .dem file again',
-        step4: 'It will import instantly once OpenDota has parsed it!'
-      },
-      tip: 'OpenDota needs to parse the replay first. This is a one-time step per match.'
-    }, { status: 404 })
+    const steamData = await steamResponse.json()
+    
+    if (!steamData.result) {
+      return NextResponse.json({ 
+        error: 'Invalid response from Steam API',
+        matchId: matchId
+      }, { status: 500 })
+    }
+
+    const matchData = steamData.result
+    console.log('Match data retrieved successfully!')
+
+    // Import match data
+    return await importMatchData(matchData, matchId, file.name)
 
   } catch (error) {
     console.error('Replay processing error:', error)
     return NextResponse.json({ 
-      error: `Failed to process replay: ${error.message}`,
-      stack: error.stack
+      error: `Failed to process replay: ${error.message}`
     }, { status: 500 })
   }
 }
@@ -73,9 +74,24 @@ async function importMatchData(matchData, matchId, fileName) {
 
   if (seasonError || !season) {
     return NextResponse.json({ 
-      error: 'No active season found. Please create an active season first.',
-      tip: 'Run the seasons SQL setup script in your Supabase dashboard'
+      error: 'No active season found. Please create an active season first.'
     }, { status: 400 })
+  }
+
+  // Check if match already exists
+  const { data: existingMatch } = await supabase
+    .from('matches')
+    .select('id')
+    .eq('duration', matchData.duration)
+    .eq('radiant_win', matchData.radiant_win)
+    .single()
+
+  if (existingMatch) {
+    return NextResponse.json({
+      success: false,
+      message: 'This match has already been imported!',
+      matchId: matchId
+    })
   }
 
   // Create match
@@ -103,8 +119,8 @@ async function importMatchData(matchData, matchId, fileName) {
 
   for (let i = 0; i < players.length; i++) {
     const playerData = players[i]
-    const team = i < 5 ? 'radiant' : 'dire'
-    const playerName = playerData.personaname || `Player${playerData.player_slot}`
+    const team = playerData.player_slot < 128 ? 'radiant' : 'dire'
+    const playerName = playerData.persona || playerData.account_id || `Player${i + 1}`
     
     // Get or create player
     let { data: player } = await supabase
@@ -118,7 +134,7 @@ async function importMatchData(matchData, matchId, fileName) {
         .from('players')
         .insert({ 
           name: playerName,
-          dota_rank: getRankName(playerData.rank_tier)
+          dota_rank: 'Unranked' // Steam API doesn't provide rank
         })
         .select()
         .single()
@@ -133,12 +149,16 @@ async function importMatchData(matchData, matchId, fileName) {
       : playerData.kills + playerData.assists
     const performanceScore = Math.min(10, (kda * 2 + (playerData.gold_per_min + playerData.xp_per_min) / 200) / 2)
 
+    // Determine position (1-5) based on player_slot
+    const slotWithinTeam = playerData.player_slot % 128
+    const position = (slotWithinTeam % 5) + 1
+
     // Insert player stats
     await supabase.from('player_match_stats').insert({
       match_id: match.id,
       player_id: player.id,
       hero: getHeroName(playerData.hero_id),
-      position: playerData.lane_role || ((i % 5) + 1),
+      position: position,
       team: team,
       kills: playerData.kills || 0,
       deaths: playerData.deaths || 0,
@@ -165,20 +185,13 @@ async function importMatchData(matchData, matchId, fileName) {
 
   return NextResponse.json({
     success: true,
-    message: `🎉 Successfully imported match ${matchId}!`,
+    message: `🎉 Successfully imported match ${matchId} with ${insertedCount} players!`,
     matchId: matchId,
     playersProcessed: insertedCount,
     matchDuration: `${Math.floor(matchData.duration / 60)}:${(matchData.duration % 60).toString().padStart(2, '0')}`,
-    winner: matchData.radiant_win ? 'Radiant' : 'Dire'
+    winner: matchData.radiant_win ? 'Radiant' : 'Dire',
+    source: 'Steam API'
   })
-}
-
-function getRankName(rankTier) {
-  if (!rankTier) return 'Unranked'
-  const ranks = ['Herald', 'Guardian', 'Crusader', 'Archon', 'Legend', 'Ancient', 'Divine', 'Immortal']
-  const tier = Math.floor(rankTier / 10)
-  const stars = rankTier % 10
-  return tier < ranks.length ? `${ranks[tier]} ${stars}` : 'Immortal'
 }
 
 function getHeroName(heroId) {
@@ -211,8 +224,4 @@ function getHeroName(heroId) {
     146: 'Kez'
   }
   return heroes[heroId] || `Hero ${heroId}`
-}
-
-function sleep(ms) {
-  return new Promise(resolve => setTimeout(resolve, ms))
 }
