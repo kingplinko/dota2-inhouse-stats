@@ -5,8 +5,9 @@ import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Alert, AlertDescription } from '@/components/ui/alert'
-import { Upload, FileText, CheckCircle, XCircle } from 'lucide-react'
+import { Upload, FileText, CheckCircle, XCircle, Film } from 'lucide-react'
 import Papa from 'papaparse'
 
 export default function AdminPage() {
@@ -14,9 +15,10 @@ export default function AdminPage() {
   const [uploading, setUploading] = useState(false)
   const [message, setMessage] = useState(null)
   const [messageType, setMessageType] = useState('info')
+  const [uploadType, setUploadType] = useState('csv')
   const supabase = createClient()
 
-  async function handleUpload(e) {
+  async function handleCSVUpload(e) {
     e.preventDefault()
     if (!file) {
       setMessage('Please select a file')
@@ -138,112 +140,263 @@ export default function AdminPage() {
     }
   }
 
+  async function handleReplayUpload(e) {
+    e.preventDefault()
+    if (!file) {
+      setMessage('Please select a replay file')
+      setMessageType('error')
+      return
+    }
+
+    setUploading(true)
+    setMessage('Parsing replay file... This may take 30-60 seconds.')
+    setMessageType('info')
+
+    try {
+      const formData = new FormData()
+      formData.append('file', file)
+
+      const response = await fetch('/api/upload-replay', {
+        method: 'POST',
+        body: formData,
+      })
+
+      const result = await response.json()
+
+      if (!response.ok) {
+        throw new Error(result.error || 'Upload failed')
+      }
+
+      setMessage(result.message || 'Replay processed successfully!')
+      setMessageType('success')
+      setFile(null)
+      e.target.reset()
+    } catch (error) {
+      console.error('Replay upload error:', error)
+      setMessage(`Error: ${error.message}`)
+      setMessageType('error')
+    } finally {
+      setUploading(false)
+    }
+  }
+
   return (
     <div className="max-w-4xl space-y-6">
       <div>
         <h1 className="text-3xl font-bold text-gray-900">Admin Upload</h1>
-        <p className="text-gray-600 mt-1">Upload match data via CSV file</p>
+        <p className="text-gray-600 mt-1">Upload match data via CSV or replay files</p>
       </div>
 
       {message && (
         <Alert variant={messageType === 'error' ? 'destructive' : 'default'}>
           {messageType === 'success' ? (
             <CheckCircle className="h-4 w-4" />
-          ) : (
+          ) : messageType === 'error' ? (
             <XCircle className="h-4 w-4" />
-          )}
+          ) : null}
           <AlertDescription>{message}</AlertDescription>
         </Alert>
       )}
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Upload CSV File</CardTitle>
-          <CardDescription>
-            Upload a CSV file with match data. The file should include player stats for each match.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <form onSubmit={handleUpload} className="space-y-4">
-            <div className="flex items-center space-x-4">
-              <Input
-                type="file"
-                accept=".csv"
-                onChange={(e) => setFile(e.target.files?.[0] || null)}
-                disabled={uploading}
-              />
-              <Button type="submit" disabled={!file || uploading}>
-                {uploading ? (
-                  <>
-                    <Upload className="mr-2 h-4 w-4 animate-spin" />
-                    Uploading...
-                  </>
-                ) : (
-                  <>
-                    <Upload className="mr-2 h-4 w-4" />
-                    Upload
-                  </>
-                )}
-              </Button>
-            </div>
-          </form>
-        </CardContent>
-      </Card>
+      <Tabs defaultValue="csv" className="w-full">
+        <TabsList className="grid w-full grid-cols-2">
+          <TabsTrigger value="csv" onClick={() => { setUploadType('csv'); setFile(null); setMessage(null) }}>
+            <FileText className="mr-2 h-4 w-4" />
+            CSV Upload
+          </TabsTrigger>
+          <TabsTrigger value="replay" onClick={() => { setUploadType('replay'); setFile(null); setMessage(null) }}>
+            <Film className="mr-2 h-4 w-4" />
+            Replay (.dem)
+          </TabsTrigger>
+        </TabsList>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center space-x-2">
-            <FileText className="w-5 h-5" />
-            <span>CSV Format</span>
-          </CardTitle>
-          <CardDescription>Your CSV file should have the following columns:</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="bg-gray-50 rounded-lg p-4 font-mono text-sm">
-            <div className="text-gray-700">
-              player, hero, team, kills, deaths, assists, last_hits, denies, gpm, xpm,
-              hero_damage, tower_damage, hero_healing, performance_score, position,
-              dota_rank, match_date, win
-            </div>
-          </div>
-          <div className="mt-4 text-sm text-gray-600 space-y-2">
-            <p><strong>player:</strong> Player name</p>
-            <p><strong>hero:</strong> Hero name</p>
-            <p><strong>team:</strong> radiant or dire</p>
-            <p><strong>kills, deaths, assists:</strong> Player statistics</p>
-            <p><strong>win:</strong> true/false or 1/0</p>
-            <p><strong>performance_score:</strong> Overall performance rating (0-10)</p>
-            <p><strong>position:</strong> 1-5 (carry to support)</p>
-          </div>
-        </CardContent>
-      </Card>
+        <TabsContent value="csv" className="space-y-6">
+          <Card>
+            <CardHeader>
+              <CardTitle>Upload CSV File</CardTitle>
+              <CardDescription>
+                Upload a CSV file with match data. The file should include player stats for each match.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <form onSubmit={handleCSVUpload} className="space-y-4">
+                <div className="flex items-center space-x-4">
+                  <Input
+                    type="file"
+                    accept=".csv"
+                    onChange={(e) => setFile(e.target.files?.[0] || null)}
+                    disabled={uploading}
+                  />
+                  <Button type="submit" disabled={!file || uploading}>
+                    {uploading ? (
+                      <>
+                        <Upload className="mr-2 h-4 w-4 animate-spin" />
+                        Uploading...
+                      </>
+                    ) : (
+                      <>
+                        <Upload className="mr-2 h-4 w-4" />
+                        Upload
+                      </>
+                    )}
+                  </Button>
+                </div>
+              </form>
+            </CardContent>
+          </Card>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Example CSV</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-4">
-            <div className="bg-gray-50 rounded-lg p-4 font-mono text-xs overflow-x-auto">
-              <pre>
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center space-x-2">
+                <FileText className="w-5 h-5" />
+                <span>CSV Format</span>
+              </CardTitle>
+              <CardDescription>Your CSV file should have the following columns:</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="bg-gray-50 rounded-lg p-4 font-mono text-sm">
+                <div className="text-gray-700">
+                  player, hero, team, kills, deaths, assists, last_hits, denies, gpm, xpm,
+                  hero_damage, tower_damage, hero_healing, performance_score, position,
+                  dota_rank, match_date, win
+                </div>
+              </div>
+              <div className="mt-4 text-sm text-gray-600 space-y-2">
+                <p><strong>player:</strong> Player name</p>
+                <p><strong>hero:</strong> Hero name</p>
+                <p><strong>team:</strong> radiant or dire</p>
+                <p><strong>kills, deaths, assists:</strong> Player statistics</p>
+                <p><strong>win:</strong> true/false or 1/0</p>
+                <p><strong>performance_score:</strong> Overall performance rating (0-10)</p>
+                <p><strong>position:</strong> 1-5 (carry to support)</p>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Example CSV</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-4">
+                <div className="bg-gray-50 rounded-lg p-4 font-mono text-xs overflow-x-auto">
+                  <pre>
 player,hero,team,kills,deaths,assists,last_hits,denies,gpm,xpm,hero_damage,tower_damage,hero_healing,performance_score,position,dota_rank,match_date,win
 Player1,Anti-Mage,radiant,10,2,5,450,20,650,700,15000,3000,0,8.5,1,Divine 5,2024-01-15,true
 Player2,Crystal Maiden,radiant,2,8,15,50,5,250,300,8000,500,5000,7.2,5,Ancient 3,2024-01-15,true
-              </pre>
-            </div>
-            <div>
-              <a
-                href="/sample_matches.csv"
-                download
-                className="inline-flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-              >
-                <FileText className="mr-2 h-4 w-4" />
-                Download Sample CSV
-              </a>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
+                  </pre>
+                </div>
+                <div>
+                  <a
+                    href="/sample_matches.csv"
+                    download
+                    className="inline-flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                  >
+                    <FileText className="mr-2 h-4 w-4" />
+                    Download Sample CSV
+                  </a>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="replay" className="space-y-6">
+          <Card>
+            <CardHeader>
+              <CardTitle>Upload Dota 2 Replay (.dem)</CardTitle>
+              <CardDescription>
+                Upload a Dota 2 replay file to automatically extract match data and player statistics.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <form onSubmit={handleReplayUpload} className="space-y-4">
+                <div className="flex items-center space-x-4">
+                  <Input
+                    type="file"
+                    accept=".dem"
+                    onChange={(e) => setFile(e.target.files?.[0] || null)}
+                    disabled={uploading}
+                  />
+                  <Button type="submit" disabled={!file || uploading}>
+                    {uploading ? (
+                      <>
+                        <Upload className="mr-2 h-4 w-4 animate-spin" />
+                        Parsing...
+                      </>
+                    ) : (
+                      <>
+                        <Film className="mr-2 h-4 w-4" />
+                        Upload Replay
+                      </>
+                    )}
+                  </Button>
+                </div>
+                {uploading && (
+                  <div className="text-sm text-gray-600">
+                    ⏳ Parsing replay file... This usually takes 30-60 seconds depending on match length.
+                  </div>
+                )}
+              </form>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>How It Works</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-3 text-sm text-gray-600">
+                <div className="flex items-start space-x-2">
+                  <CheckCircle className="w-4 h-4 text-green-600 mt-0.5" />
+                  <div>
+                    <strong>Automatic Parsing:</strong> The replay file is automatically parsed to extract all player statistics
+                  </div>
+                </div>
+                <div className="flex items-start space-x-2">
+                  <CheckCircle className="w-4 h-4 text-green-600 mt-0.5" />
+                  <div>
+                    <strong>Data Extracted:</strong> Kills, deaths, assists, GPM, XPM, hero damage, tower damage, and more
+                  </div>
+                </div>
+                <div className="flex items-start space-x-2">
+                  <CheckCircle className="w-4 h-4 text-green-600 mt-0.5" />
+                  <div>
+                    <strong>Auto-Insert:</strong> Players are created if they don't exist, match data is stored automatically
+                  </div>
+                </div>
+                <div className="flex items-start space-x-2">
+                  <CheckCircle className="w-4 h-4 text-green-600 mt-0.5" />
+                  <div>
+                    <strong>Performance Score:</strong> Automatically calculated based on KDA, farm, and damage metrics
+                  </div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Where to Find Replay Files</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-3 text-sm text-gray-600">
+                <p><strong>Steam Replay Folder:</strong></p>
+                <div className="bg-gray-50 rounded p-3 font-mono text-xs">
+                  Windows: C:\Program Files (x86)\Steam\steamapps\common\dota 2 beta\game\dota\replays
+                </div>
+                <div className="bg-gray-50 rounded p-3 font-mono text-xs">
+                  Mac: ~/Library/Application Support/Steam/steamapps/common/dota 2 beta/game/dota/replays
+                </div>
+                <div className="bg-gray-50 rounded p-3 font-mono text-xs">
+                  Linux: ~/.steam/steam/steamapps/common/dota 2 beta/game/dota/replays
+                </div>
+                <p className="mt-3">Replay files are named with the Match ID and have a .dem extension.</p>
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
     </div>
   )
 }
