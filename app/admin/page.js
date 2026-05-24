@@ -149,12 +149,25 @@ export default function AdminPage() {
     }
 
     setUploading(true)
-    setMessage('Parsing replay file... This may take 30-60 seconds.')
+    setMessage('📤 Uploading replay file...')
     setMessageType('info')
 
     try {
       const formData = new FormData()
       formData.append('file', file)
+
+      // Update message for different stages
+      setTimeout(() => {
+        if (uploading) setMessage('🔍 Checking if match is already parsed...')
+      }, 2000)
+
+      setTimeout(() => {
+        if (uploading) setMessage('⚡ Submitting to OpenDota for parsing...')
+      }, 5000)
+
+      setTimeout(() => {
+        if (uploading) setMessage('⏳ Waiting for OpenDota to parse replay... (this may take 1-2 minutes)')
+      }, 10000)
 
       const response = await fetch('/api/upload-replay', {
         method: 'POST',
@@ -167,8 +180,14 @@ export default function AdminPage() {
         throw new Error(result.error || 'Upload failed')
       }
 
-      setMessage(result.message || 'Replay processed successfully!')
-      setMessageType('success')
+      if (result.status === 'parsing') {
+        setMessage(result.message + ' Your match will appear on the leaderboard shortly!')
+        setMessageType('info')
+      } else {
+        setMessage(result.message || 'Replay processed and imported successfully! Check the leaderboard! 🎉')
+        setMessageType('success')
+      }
+      
       setFile(null)
       e.target.reset()
     } catch (error) {
@@ -304,9 +323,9 @@ Player2,Crystal Maiden,radiant,2,8,15,50,5,250,300,8000,500,5000,7.2,5,Ancient 3
         <TabsContent value="replay" className="space-y-6">
           <Card>
             <CardHeader>
-              <CardTitle>Upload Dota 2 Replay (.dem)</CardTitle>
+              <CardTitle>Upload Dota 2 Replay (.dem) - Fully Automated!</CardTitle>
               <CardDescription>
-                Upload your .dem replay file and we'll automatically fetch the match data and populate your dashboard!
+                Just upload your .dem file and we'll handle everything automatically - parsing, data extraction, and database import!
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -327,14 +346,18 @@ Player2,Crystal Maiden,radiant,2,8,15,50,5,250,300,8000,500,5000,7.2,5,Ancient 3
                     ) : (
                       <>
                         <Film className="mr-2 h-4 w-4" />
-                        Upload & Import
+                        Upload & Auto-Import
                       </>
                     )}
                   </Button>
                 </div>
                 {uploading && (
-                  <div className="text-sm text-gray-600">
-                    ⏳ Fetching match data from OpenDota... This usually takes 5-10 seconds.
+                  <div className="text-sm text-gray-600 space-y-1">
+                    <p className="flex items-center space-x-2">
+                      <span className="animate-pulse">⏳</span>
+                      <span>Processing your replay... This takes 1-2 minutes.</span>
+                    </p>
+                    <p className="text-xs text-gray-500">We're automatically submitting to OpenDota, waiting for parsing, then importing all data.</p>
                   </div>
                 )}
               </form>
@@ -343,34 +366,49 @@ Player2,Crystal Maiden,radiant,2,8,15,50,5,250,300,8000,500,5000,7.2,5,Ancient 3
 
           <Card>
             <CardHeader>
-              <CardTitle>How It Works</CardTitle>
+              <CardTitle>How It Works - 100% Automated</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="space-y-3 text-sm text-gray-600">
                 <div className="flex items-start space-x-2">
                   <CheckCircle className="w-4 h-4 text-green-600 mt-0.5" />
                   <div>
-                    <strong>Extract Match ID:</strong> We read the match ID from your .dem filename
+                    <strong>Step 1:</strong> You upload the .dem file
                   </div>
                 </div>
                 <div className="flex items-start space-x-2">
                   <CheckCircle className="w-4 h-4 text-green-600 mt-0.5" />
                   <div>
-                    <strong>Fetch from OpenDota:</strong> Automatically retrieve full match data via API
+                    <strong>Step 2:</strong> We automatically submit it to OpenDota for parsing
                   </div>
                 </div>
                 <div className="flex items-start space-x-2">
                   <CheckCircle className="w-4 h-4 text-green-600 mt-0.5" />
                   <div>
-                    <strong>Auto-Populate:</strong> All players, stats, and match data inserted into your database
+                    <strong>Step 3:</strong> We wait for parsing to complete (1-2 minutes)
                   </div>
                 </div>
                 <div className="flex items-start space-x-2">
                   <CheckCircle className="w-4 h-4 text-green-600 mt-0.5" />
                   <div>
-                    <strong>Instant Results:</strong> Leaderboard updates immediately with the new match
+                    <strong>Step 4:</strong> We automatically fetch all match data
                   </div>
                 </div>
+                <div className="flex items-start space-x-2">
+                  <CheckCircle className="w-4 h-4 text-green-600 mt-0.5" />
+                  <div>
+                    <strong>Step 5:</strong> All players and stats are inserted into your database
+                  </div>
+                </div>
+                <div className="flex items-start space-x-2">
+                  <CheckCircle className="w-4 h-4 text-green-600 mt-0.5" />
+                  <div>
+                    <strong>Step 6:</strong> Leaderboard updates instantly - Done! 🎉
+                  </div>
+                </div>
+                <p className="mt-4 text-xs bg-blue-50 p-3 rounded border border-blue-200">
+                  💡 <strong>No manual work required!</strong> Just upload and wait. Everything else happens automatically.
+                </p>
               </div>
             </CardContent>
           </Card>
@@ -382,10 +420,11 @@ Player2,Crystal Maiden,radiant,2,8,15,50,5,250,300,8000,500,5000,7.2,5,Ancient 3
             <CardContent>
               <div className="space-y-2 text-sm text-gray-600">
                 <p>✅ <strong>Filename format:</strong> Your .dem file must be named with the match ID (e.g., <code className="bg-gray-100 px-1 rounded">8823519575.dem</code>)</p>
-                <p>✅ <strong>Match on OpenDota:</strong> The match should already be parsed by OpenDota (most matches are automatically parsed)</p>
+                <p>✅ <strong>File size:</strong> Typical replay files are 50-200MB (this is normal)</p>
                 <p>✅ <strong>Active season:</strong> You need an active season in your database</p>
+                <p>✅ <strong>Internet connection:</strong> We need to communicate with OpenDota's API</p>
                 <p className="mt-4 text-xs text-gray-500">
-                  💡 If a match isn't on OpenDota yet, upload it to <a href="https://www.opendota.com/request" target="_blank" className="text-blue-600 hover:underline">OpenDota.com/request</a> first, wait 2-5 minutes, then upload the .dem file here!
+                  ⚡ <strong>Already parsed replays:</strong> If the match is already on OpenDota, import is instant (5 seconds)!
                 </p>
               </div>
             </CardContent>
