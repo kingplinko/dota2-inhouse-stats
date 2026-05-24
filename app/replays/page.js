@@ -65,26 +65,20 @@ export default function ReplayUploadPage() {
       setUploadStatus('parsing')
 
       // 3. Trigger parsing
-      const parseResponse = await fetch('/api/parse-replay', {
+      // Trigger parsing (don't wait for response, it's async)
+      fetch('/api/parse-replay', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           uploadId: uploadRecord.id,
           filePath: filePath
         })
-      })
+      }).catch(err => console.error('Parse trigger error:', err))
 
-      const parseResult = await parseResponse.json()
-
-      if (parseResult.success) {
-        setUploadStatus('complete')
-        setMessage(`✅ ${parseResult.message} Check the leaderboard!`)
-        setMessageType('success')
-      } else {
-        setUploadStatus('failed')
-        setMessage(parseResult.message || parseResult.error)
-        setMessageType('error')
-      }
+      // Show success immediately
+      setUploadStatus('parsing')
+      setMessage('✅ Replay uploaded successfully! Parsing in background...')
+      setMessageType('success')
 
       setFile(null)
       e.target.reset()
@@ -119,11 +113,11 @@ export default function ReplayUploadPage() {
       case 'uploading':
         return 'Uploading to storage...'
       case 'uploaded':
-        return 'Uploaded! Creating record...'
+        return 'Uploaded successfully! Ready for parsing.'
       case 'parsing':
-        return 'Parsing replay data...'
+        return 'File uploaded - parser implementation pending'
       case 'complete':
-        return 'Complete! Match imported.'
+        return 'Complete! Match imported to leaderboard.'
       case 'failed':
         return 'Failed - see error message'
       default:

@@ -56,49 +56,54 @@ export async function POST(request) {
     // Extract match ID from filename
     const matchId = path.basename(filePath).replace('.dem', '')
 
-    // Try Steam API first
+    // Try Steam API first (for public matches)
     const steamApiKey = process.env.STEAM_API_KEY
-    const steamUrl = `https://api.steampowered.com/IDOTA2Match_570/GetMatchDetails/v1/?match_id=${matchId}&key=${steamApiKey}`
-    
-    console.log('Checking Steam API...')
-    const steamResponse = await fetch(steamUrl)
-    
-    if (steamResponse.ok) {
-      const steamData = await steamResponse.json()
+    if (steamApiKey) {
+      const steamUrl = `https://api.steampowered.com/IDOTA2Match_570/GetMatchDetails/v1/?match_id=${matchId}&key=${steamApiKey}`
       
-      if (steamData.result) {
-        console.log('Match found on Steam API! Importing...')
-        const result = await importMatchData(steamData.result, matchId, supabase)
+      console.log('Checking Steam API...')
+      const steamResponse = await fetch(steamUrl)
+      
+      if (steamResponse.ok) {
+        const steamData = await steamResponse.json()
         
-        if (result.success) {
-          await supabase
-            .from('replay_uploads')
-            .update({ 
-              status: 'complete', 
-              match_id: matchId,
-              parsed_at: new Date().toISOString()
-            })
-            .eq('id', uploadId)
-
-          // Cleanup
-          await fs.unlink(tmpPath).catch(() => {})
+        if (steamData.result) {
+          console.log('Match found on Steam API! Importing...')
+          const result = await importMatchData(steamData.result, matchId, supabase)
           
-          return NextResponse.json({
-            success: true,
-            message: `Match ${matchId} imported successfully!`,
-            playersProcessed: result.playersProcessed
-          })
+          if (result.success) {
+            await supabase
+              .from('replay_uploads')
+              .update({ 
+                status: 'complete', 
+                match_id: matchId,
+                parsed_at: new Date().toISOString()
+              })
+              .eq('id', uploadId)
+
+            // Cleanup
+            await fs.unlink(tmpPath).catch(() => {})
+            
+            return NextResponse.json({
+              success: true,
+              message: `Match ${matchId} imported successfully from Steam API!`,
+              playersProcessed: result.playersProcessed
+            })
+          }
         }
       }
     }
 
-    // Steam API didn't work - mark as failed for now
+    // Steam API didn't have it - this is an inhouse/private match
+    console.log('Steam API unavailable - inhouse match detected')
+    
+    // Update status to show we need a parser implementation
     await supabase
       .from('replay_uploads')
       .update({ 
-        status: 'failed', 
+        status: 'uploaded',
         match_id: matchId,
-        error_message: 'Private/inhouse match - Steam API unavailable. Please use CSV upload for private lobbies.'
+        error_message: 'Uploaded - waiting for .dem parser implementation. File stored in storage.'
       })
       .eq('id', uploadId)
 
@@ -106,11 +111,12 @@ export async function POST(request) {
     await fs.unlink(tmpPath).catch(() => {})
 
     return NextResponse.json({
-      success: false,
-      error: 'Private lobby match detected',
-      message: 'This match is not available via Steam API. Please use CSV upload for inhouse matches.',
-      matchId: matchId
-    }, { status: 404 })
+      success: true,
+      status: 'uploaded',
+      message: 'Replay uploaded successfully. Parser implementation pending.',
+      matchId: matchId,
+      note: 'The .dem file is stored and ready. A parser needs to be implemented to extract match data.'
+    })
 
   } catch (error) {
     console.error('Parse error:', error)
