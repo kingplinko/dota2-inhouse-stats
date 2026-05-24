@@ -16,6 +16,7 @@ const navigation = [
   { name: 'Synergy', href: '/synergy', icon: Network },
   { name: 'Matches', href: '/matches', icon: List },
   { name: 'Seasons', href: '/seasons', icon: Calendar },
+  { name: 'Replays', href: '/replays', icon: Upload },
   { name: 'Admin', href: '/admin', icon: Upload },
 ]
 
