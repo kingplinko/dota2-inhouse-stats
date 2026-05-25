@@ -102,6 +102,8 @@ app.post('/parse-replay', async (req, res) => {
     console.log(`  - Players: ${matchData.players.length}`);
     console.log(`  - Radiant win: ${matchData.radiant_win}`);
     console.log(`  - Duration: ${matchData.duration}s`);
+    console.log('[Step 6] Full player data:');
+    console.log(JSON.stringify(matchData.players, null, 2));
     
     if (matchData.players.length === 0) {
       throw new Error('Replay parsed but no player stats were extracted');
@@ -270,19 +272,33 @@ async function insertMatchData(supabase, matchData, replayUploadId) {
       const playerData = matchData.players[i];
       console.log(`[insertMatchData] Processing player ${i + 1}/${matchData.players.length}: ${playerData.player_name}`);
       
+      // Prepare player insert data
+      const playerInsertData = { 
+        name: playerData.player_name
+      };
+      console.log(`[insertMatchData] Inserting player:`, JSON.stringify(playerInsertData));
+      
       // Upsert player
       const { data: player, error: playerError } = await supabase
         .from('players')
-        .upsert({ name: playerData.player_name }, { onConflict: 'name' })
+        .upsert(playerInsertData, { onConflict: 'name' })
         .select()
         .single();
       
       if (playerError) {
-        console.error(`[insertMatchData] Player upsert error for ${playerData.player_name}:`, playerError);
+        console.error(`[insertMatchData] ❌ Player upsert error for ${playerData.player_name}:`);
+        console.error(`  Error code: ${playerError.code}`);
+        console.error(`  Error message: ${playerError.message}`);
+        console.error(`  Error details:`, JSON.stringify(playerError, null, 2));
         continue;
       }
       
-      console.log(`[insertMatchData] Player ${playerData.player_name} upserted with ID: ${player.id}`);
+      if (!player || !player.id) {
+        console.error(`[insertMatchData] ❌ Player upsert returned no data for ${playerData.player_name}`);
+        continue;
+      }
+      
+      console.log(`[insertMatchData] ✅ Player ${playerData.player_name} upserted with ID: ${player.id}`);
       playersInserted++;
       
       // Insert player match stats
@@ -304,16 +320,22 @@ async function insertMatchData(supabase, matchData, replayUploadId) {
         hero_healing: playerData.hero_healing
       };
       
-      const { error: statsError } = await supabase
+      console.log(`[insertMatchData] Inserting stats:`, JSON.stringify(statsData));
+      
+      const { data: insertedStats, error: statsError } = await supabase
         .from('player_match_stats')
-        .insert(statsData);
+        .insert(statsData)
+        .select();
       
       if (statsError) {
-        console.error(`[insertMatchData] Stats insert error for ${playerData.player_name}:`, statsError);
+        console.error(`[insertMatchData] ❌ Stats insert error for ${playerData.player_name}:`);
+        console.error(`  Error code: ${statsError.code}`);
+        console.error(`  Error message: ${statsError.message}`);
+        console.error(`  Error details:`, JSON.stringify(statsError, null, 2));
         continue;
       }
       
-      console.log(`[insertMatchData] Stats inserted for ${playerData.player_name}`);
+      console.log(`[insertMatchData] ✅ Stats inserted for ${playerData.player_name}`);
       statsInserted++;
     }
     
