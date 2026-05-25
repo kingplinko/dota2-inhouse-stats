@@ -270,4 +270,7 @@ async function insertMatchData(supabase, matchData, replayUploadId) {
 
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`✅ Dota 2 Parser Service listening on port ${PORT}`);
+  console.log(`Health endpoint: http://0.0.0.0:${PORT}/health`);
+  console.log(`Parse endpoint: http://0.0.0.0:${PORT}/parse-replay`);
+  console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
 });
