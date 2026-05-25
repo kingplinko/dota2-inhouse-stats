@@ -98,11 +98,28 @@ app.post('/parse-replay', async (req, res) => {
     // TODO: Integrate actual Dota 2 parser (manta, clarity, etc.)
     const matchData = generateMockMatchData(upload.file_name);
     
-    console.log('[Step 6] Extracting match data...');
+    console.log('[Step 6] Match data generated:');
+    console.log(`  - Players: ${matchData.players.length}`);
+    console.log(`  - Radiant win: ${matchData.radiant_win}`);
+    console.log(`  - Duration: ${matchData.duration}s`);
+    
+    if (matchData.players.length === 0) {
+      throw new Error('Replay parsed but no player stats were extracted');
+    }
     
     // Step 7: Insert into database
     console.log('[Step 7] Inserting data into database...');
     const result = await insertMatchData(supabase, matchData, replay_upload_id);
+    
+    console.log('[Step 7] Database insertion results:');
+    console.log(`  - Match ID: ${result.match_id}`);
+    console.log(`  - Players inserted: ${result.players_inserted}`);
+    console.log(`  - Stats inserted: ${result.stats_inserted}`);
+    
+    // Validate insertion
+    if (result.players_inserted === 0 || result.stats_inserted === 0) {
+      throw new Error(`Database insertion failed: ${result.players_inserted} players, ${result.stats_inserted} stats inserted`);
+    }
     
     // Step 8: Update status to complete
     console.log('[Step 8] Updating status to complete...');
@@ -121,7 +138,11 @@ app.post('/parse-replay', async (req, res) => {
       success: true,
       match_id: result.match_id,
       players_inserted: result.players_inserted,
-      stats_inserted: result.stats_inserted
+      stats_inserted: result.stats_inserted,
+      parsed_player_count: matchData.players.length,
+      inserted_players_count: result.players_inserted,
+      inserted_player_match_stats_count: result.stats_inserted,
+      inserted_match_count: 1
     });
     
   } catch (error) {
@@ -196,20 +217,30 @@ function generateMockMatchData(filename) {
 
 async function insertMatchData(supabase, matchData, replayUploadId) {
   try {
+    console.log('[insertMatchData] Starting database transaction...');
+    
     // Get active season
+    console.log('[insertMatchData] Fetching active season...');
     const { data: seasons, error: seasonError } = await supabase
       .from('seasons')
       .select('id')
       .eq('is_active', true)
       .limit(1);
     
-    if (seasonError || !seasons || seasons.length === 0) {
+    if (seasonError) {
+      console.error('[insertMatchData] Season query error:', seasonError);
+      throw new Error(`Failed to fetch season: ${seasonError.message}`);
+    }
+    
+    if (!seasons || seasons.length === 0) {
       throw new Error('No active season found');
     }
     
     const seasonId = seasons[0].id;
+    console.log(`[insertMatchData] Active season ID: ${seasonId}`);
     
     // Insert match
+    console.log('[insertMatchData] Inserting match...');
     const { data: match, error: matchError } = await supabase
       .from('matches')
       .insert({
@@ -222,15 +253,23 @@ async function insertMatchData(supabase, matchData, replayUploadId) {
       .single();
     
     if (matchError) {
+      console.error('[insertMatchData] Match insert error:', matchError);
       throw new Error(`Failed to insert match: ${matchError.message}`);
     }
     
     const matchId = match.id;
+    console.log(`[insertMatchData] Match inserted with ID: ${matchId}`);
+    
     let playersInserted = 0;
     let statsInserted = 0;
     
     // Insert players and stats
-    for (const playerData of matchData.players) {
+    console.log(`[insertMatchData] Inserting ${matchData.players.length} players...`);
+    
+    for (let i = 0; i < matchData.players.length; i++) {
+      const playerData = matchData.players[i];
+      console.log(`[insertMatchData] Processing player ${i + 1}/${matchData.players.length}: ${playerData.player_name}`);
+      
       // Upsert player
       const { data: player, error: playerError } = await supabase
         .from('players')
@@ -239,40 +278,46 @@ async function insertMatchData(supabase, matchData, replayUploadId) {
         .single();
       
       if (playerError) {
-        console.error('Player upsert error:', playerError);
+        console.error(`[insertMatchData] Player upsert error for ${playerData.player_name}:`, playerError);
         continue;
       }
       
+      console.log(`[insertMatchData] Player ${playerData.player_name} upserted with ID: ${player.id}`);
       playersInserted++;
       
       // Insert player match stats
+      const statsData = {
+        match_id: matchId,
+        player_id: player.id,
+        hero: playerData.hero,
+        position: playerData.position,
+        team: playerData.team,
+        kills: playerData.kills,
+        deaths: playerData.deaths,
+        assists: playerData.assists,
+        last_hits: playerData.last_hits,
+        denies: playerData.denies,
+        gpm: playerData.gpm,
+        xpm: playerData.xpm,
+        hero_damage: playerData.hero_damage,
+        tower_damage: playerData.tower_damage,
+        hero_healing: playerData.hero_healing
+      };
+      
       const { error: statsError } = await supabase
         .from('player_match_stats')
-        .insert({
-          match_id: matchId,
-          player_id: player.id,
-          hero: playerData.hero,
-          position: playerData.position,
-          team: playerData.team,
-          kills: playerData.kills,
-          deaths: playerData.deaths,
-          assists: playerData.assists,
-          last_hits: playerData.last_hits,
-          denies: playerData.denies,
-          gpm: playerData.gpm,
-          xpm: playerData.xpm,
-          hero_damage: playerData.hero_damage,
-          tower_damage: playerData.tower_damage,
-          hero_healing: playerData.hero_healing
-        });
+        .insert(statsData);
       
       if (statsError) {
-        console.error('Stats insert error:', statsError);
+        console.error(`[insertMatchData] Stats insert error for ${playerData.player_name}:`, statsError);
         continue;
       }
       
+      console.log(`[insertMatchData] Stats inserted for ${playerData.player_name}`);
       statsInserted++;
     }
+    
+    console.log(`[insertMatchData] Summary: ${playersInserted} players, ${statsInserted} stats inserted`);
     
     return {
       match_id: matchId,
@@ -281,6 +326,7 @@ async function insertMatchData(supabase, matchData, replayUploadId) {
     };
     
   } catch (error) {
+    console.error('[insertMatchData] Fatal error:', error);
     throw new Error(`Database insertion failed: ${error.message}`);
   }
 }
