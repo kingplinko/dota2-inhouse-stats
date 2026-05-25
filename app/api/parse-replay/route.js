@@ -17,13 +17,18 @@ export async function POST(request) {
       }, { status: 400 })
     }
 
+    console.log('[Parse Replay] ========================================')
     console.log('[Parse Replay] Starting workflow for upload:', replay_upload_id)
 
     // Check if parser service is configured
     const parserUrl = process.env.PARSER_SERVICE_URL
     
+    console.log('[Parse Replay] PARSER_SERVICE_URL:', parserUrl)
+    console.log('[Parse Replay] Is URL defined?', !!parserUrl)
+    console.log('[Parse Replay] URL type:', typeof parserUrl)
+    
     if (!parserUrl) {
-      console.log('[Parse Replay] Parser service not configured')
+      console.log('[Parse Replay] ❌ Parser service not configured - URL is missing')
       return NextResponse.json({
         success: true,
         status: 'parser_pending',
@@ -32,9 +37,12 @@ export async function POST(request) {
     }
 
     // Call Railway parser service
-    console.log('[Parse Replay] Calling parser service:', parserUrl)
+    const fullUrl = `${parserUrl}/parse-replay`
+    console.log('[Parse Replay] ✅ Parser URL found!')
+    console.log('[Parse Replay] Full endpoint URL:', fullUrl)
+    console.log('[Parse Replay] Calling parser service...')
     
-    const response = await fetch(`${parserUrl}/parse-replay`, {
+    const response = await fetch(fullUrl, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -45,10 +53,14 @@ export async function POST(request) {
       signal: AbortSignal.timeout(300000) // 5 minute timeout
     })
 
+    console.log('[Parse Replay] Parser response status:', response.status)
+    console.log('[Parse Replay] Parser response ok?', response.ok)
+    
     const result = await response.json()
+    console.log('[Parse Replay] Parser response body:', JSON.stringify(result, null, 2))
 
     if (!response.ok) {
-      console.error('[Parse Replay] Parser service error:', result)
+      console.error('[Parse Replay] ❌ Parser service error:', result)
       return NextResponse.json({
         success: false,
         error: result.error || 'Parser service failed',
@@ -56,7 +68,12 @@ export async function POST(request) {
       }, { status: response.status })
     }
 
-    console.log('[Parse Replay] Parse successful!')
+    console.log('[Parse Replay] ✅ Parse successful!')
+    console.log('[Parse Replay] Match ID:', result.match_id)
+    console.log('[Parse Replay] Players inserted:', result.players_inserted)
+    console.log('[Parse Replay] Stats inserted:', result.stats_inserted)
+    console.log('[Parse Replay] ========================================')
+    
     return NextResponse.json({
       success: true,
       message: 'Replay parsed successfully! Check the leaderboard.',
@@ -64,7 +81,10 @@ export async function POST(request) {
     })
 
   } catch (error) {
-    console.error('[Parse Replay] Error:', error)
+    console.error('[Parse Replay] ❌ Fatal error:', error)
+    console.error('[Parse Replay] Error name:', error.name)
+    console.error('[Parse Replay] Error message:', error.message)
+    console.error('[Parse Replay] Error stack:', error.stack)
     
     if (error.name === 'TimeoutError') {
       return NextResponse.json({
