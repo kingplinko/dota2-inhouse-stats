@@ -1,249 +1,81 @@
 import { NextResponse } from 'next/server'
-import { createClient } from '@supabase/supabase-js'
-import { writeFile, unlink } from 'fs/promises'
-import path from 'path'
-
-export const runtime = 'nodejs'
-export const maxDuration = 300
 
 /**
- * Backend Replay Parsing Workflow
+ * Parse Replay API Route
  * 
- * Flow:
- * 1. Receive uploadId and filePath
- * 2. Update status to "parsing"
- * 3. Download .dem file from Supabase Storage
- * 4. Call external parser service
- * 5. Insert match, players, and stats into database
- * 6. Update status to "complete"
- * 7. Return success
+ * Triggers external parser service to parse .dem file
+ * Parser service handles: download from Supabase, parse, insert to DB
  */
 export async function POST(request) {
-  let tmpPath = ''
-  
   try {
-    const { uploadId, filePath } = await request.json()
+    const { replay_upload_id } = await request.json()
 
-    if (!uploadId || !filePath) {
-      return NextResponse.json({ 
-        error: 'Missing uploadId or filePath' 
+    if (!replay_upload_id) {
+      return NextResponse.json({
+        success: false,
+        error: 'replay_upload_id is required'
       }, { status: 400 })
     }
 
-    console.log(`[Parse Replay] Starting workflow for upload: ${uploadId}`)
+    console.log('[Parse Replay] Starting workflow for upload:', replay_upload_id)
+
+    // Check if parser service is configured
+    const parserUrl = process.env.PARSER_SERVICE_URL
     
-    const supabase = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL,
-      process.env.SUPABASE_SECRET_KEY
-    )
-
-    // Step 1: Update status to "parser_pending" (not "parsing" since parser isn't connected)
-    console.log('[Step 1] Updating status to parser_pending...')
-    await supabase
-      .from('replay_uploads')
-      .update({ status: 'parser_pending' })
-      .eq('id', uploadId)
-
-    // Step 2: Download .dem file from Supabase Storage
-    console.log('[Step 2] Downloading file from storage...')
-    const { data: fileData, error: downloadError } = await supabase
-      .storage
-      .from('replays')
-      .download(filePath)
-
-    if (downloadError) {
-      throw new Error(`Download failed: ${downloadError.message}`)
-    }
-
-    // Step 3: Save to temporary location
-    tmpPath = path.join('/tmp', `replay_${uploadId}.dem`)
-    const buffer = Buffer.from(await fileData.arrayBuffer())
-    await writeFile(tmpPath, buffer)
-    console.log(`[Step 3] File saved to: ${tmpPath}`)
-
-    // Step 4: Extract match ID from filename
-    const matchId = path.basename(filePath).replace('.dem', '').split('_').pop()
-    console.log(`[Step 4] Match ID: ${matchId}`)
-
-    // Step 5: Call parser service
-    console.log('[Step 5] Calling parser service...')
-    const { parseReplayWithExternalService } = require('@/lib/parserService')
-    
-    let parsedData
-    try {
-      parsedData = await parseReplayWithExternalService(tmpPath)
-    } catch (parserError) {
-      // Parser not connected yet - update status and return
-      console.error('[Parser Error]', parserError.message)
-      console.error('[Parser Error Stack]', parserError.stack)
-      await supabase
-        .from('replay_uploads')
-        .update({ 
-          status: 'parser_pending',
-          match_id: matchId,
-          error_message: parserError.message
-        })
-        .eq('id', uploadId)
-
-      await unlink(tmpPath).catch(() => {})
-
+    if (!parserUrl) {
+      console.log('[Parse Replay] Parser service not configured')
       return NextResponse.json({
         success: true,
         status: 'parser_pending',
-        message: 'Replay uploaded successfully, but stats have not been extracted yet because the parser service is not connected.',
-        matchId: matchId
+        message: 'Replay uploaded successfully, but stats have not been extracted yet because the parser service is not connected.'
       })
     }
 
-    // Step 6: Insert data into database
-    console.log('[Step 6] Inserting data into database...')
-    const result = await insertMatchData(parsedData, matchId, supabase)
+    // Call Railway parser service
+    console.log('[Parse Replay] Calling parser service:', parserUrl)
+    
+    const response = await fetch(`${parserUrl}/parse-replay`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        replay_upload_id
+      }),
+      signal: AbortSignal.timeout(300000) // 5 minute timeout
+    })
 
-    // Step 7: Update status to "complete"
-    console.log('[Step 7] Updating status to complete...')
-    await supabase
-      .from('replay_uploads')
-      .update({ 
-        status: 'complete',
-        match_id: matchId,
-        parsed_at: new Date().toISOString()
-      })
-      .eq('id', uploadId)
+    const result = await response.json()
 
-    // Cleanup
-    await unlink(tmpPath).catch(() => {})
+    if (!response.ok) {
+      console.error('[Parse Replay] Parser service error:', result)
+      return NextResponse.json({
+        success: false,
+        error: result.error || 'Parser service failed',
+        details: result.details
+      }, { status: response.status })
+    }
 
-    console.log('[Complete] Replay parsed successfully!')
+    console.log('[Parse Replay] Parse successful!')
     return NextResponse.json({
       success: true,
-      message: `Match ${matchId} imported successfully!`,
-      playersProcessed: result.playersProcessed,
-      matchId: matchId
+      message: 'Replay parsed successfully! Check the leaderboard.',
+      data: result
     })
 
   } catch (error) {
-    console.error('[Error]', error)
-
-    // Update status to failed
-    if (request.body?.uploadId) {
-      const supabase = createClient(
-        process.env.NEXT_PUBLIC_SUPABASE_URL,
-        process.env.SUPABASE_SECRET_KEY
-      )
-      
-      await supabase
-        .from('replay_uploads')
-        .update({ 
-          status: 'failed',
-          error_message: error.message
-        })
-        .eq('id', request.body.uploadId)
+    console.error('[Parse Replay] Error:', error)
+    
+    if (error.name === 'TimeoutError') {
+      return NextResponse.json({
+        success: false,
+        error: 'Parser service timeout - file may be too large or service is slow'
+      }, { status: 504 })
     }
-
-    // Cleanup
-    if (tmpPath) {
-      await unlink(tmpPath).catch(() => {})
-    }
-
-    return NextResponse.json({ 
-      error: error.message 
+    
+    return NextResponse.json({
+      success: false,
+      error: error.message
     }, { status: 500 })
   }
-}
-
-/**
- * Insert match data into database
- * Creates match, players (if needed), and player_match_stats
- */
-async function insertMatchData(parsedData, matchId, supabase) {
-  // Get active season
-  const { data: season } = await supabase
-    .from('seasons')
-    .select('id')
-    .eq('is_active', true)
-    .single()
-
-  if (!season) {
-    throw new Error('No active season found')
-  }
-
-  // Insert match
-  const { data: match, error: matchError } = await supabase
-    .from('matches')
-    .insert({
-      season_id: season.id,
-      radiant_win: parsedData.match.radiant_win,
-      match_date: parsedData.match.match_date || new Date().toISOString(),
-      duration: parsedData.match.duration,
-    })
-    .select()
-    .single()
-
-  if (matchError) {
-    throw new Error(`Failed to insert match: ${matchError.message}`)
-  }
-
-  let playersProcessed = 0
-
-  // Insert players and stats
-  for (const playerData of parsedData.players) {
-    // Get or create player
-    let { data: player } = await supabase
-      .from('players')
-      .select('id')
-      .eq('name', playerData.name)
-      .single()
-
-    if (!player) {
-      const { data: newPlayer } = await supabase
-        .from('players')
-        .insert({ name: playerData.name })
-        .select()
-        .single()
-      player = newPlayer
-    }
-
-    if (!player) continue
-
-    // Calculate performance score
-    const kda = playerData.deaths > 0 
-      ? (playerData.kills + playerData.assists) / playerData.deaths 
-      : playerData.kills + playerData.assists
-    const performanceScore = Math.min(10, (kda * 2 + (playerData.gpm + playerData.xpm) / 200) / 2)
-
-    // Insert player match stats
-    await supabase
-      .from('player_match_stats')
-      .insert({
-        match_id: match.id,
-        player_id: player.id,
-        hero: playerData.hero,
-        position: playerData.position,
-        team: playerData.team,
-        kills: playerData.kills,
-        deaths: playerData.deaths,
-        assists: playerData.assists,
-        last_hits: playerData.last_hits,
-        denies: playerData.denies,
-        gpm: playerData.gpm,
-        xpm: playerData.xpm,
-        hero_damage: playerData.hero_damage,
-        tower_damage: playerData.tower_damage,
-        hero_healing: playerData.hero_healing,
-        performance_score: performanceScore,
-      })
-
-    playersProcessed++
-  }
-
-  // Log upload
-  await supabase
-    .from('uploads')
-    .insert({
-      file_name: `${matchId}.dem`,
-      row_count: playersProcessed,
-      status: 'completed',
-    })
-
-  return { playersProcessed }
 }
