@@ -275,14 +275,15 @@ async function insertMatchData(supabase, matchData, replayUploadId) {
       
       // Prepare player insert data
       const playerInsertData = { 
+        steam_id: playerData.steam_id,
         name: playerData.player_name
       };
       console.log(`[insertMatchData] Inserting player:`, JSON.stringify(playerInsertData));
       
-      // Upsert player
+      // Upsert player using steam_id as unique identifier
       const { data: player, error: playerError } = await supabase
         .from('players')
-        .upsert(playerInsertData, { onConflict: 'name' })
+        .upsert(playerInsertData, { onConflict: 'steam_id' })
         .select()
         .single();
       
