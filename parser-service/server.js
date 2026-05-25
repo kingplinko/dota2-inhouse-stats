@@ -91,61 +91,77 @@ app.post('/parse-replay', async (req, res) => {
     
     console.log(`[Step 4] File downloaded (${fileData.size} bytes)`);
     
-    // Step 5: Parse replay (PLACEHOLDER - real parser would go here)
-    console.log('[Step 5] Parsing replay...');
+    // Step 5: Parse replay with real parser
+    console.log('[Step 5] Parsing replay with Manta...');
     
-    // For now, return mock data structure
-    // TODO: Integrate actual Dota 2 parser (manta, clarity, etc.)
-    const matchData = generateMockMatchData(upload.file_name);
-    
-    console.log('[Step 6] Match data generated:');
-    console.log(`  - Players: ${matchData.players.length}`);
-    console.log(`  - Radiant win: ${matchData.radiant_win}`);
-    console.log(`  - Duration: ${matchData.duration}s`);
-    console.log('[Step 6] Full player data:');
-    console.log(JSON.stringify(matchData.players, null, 2));
-    
-    if (matchData.players.length === 0) {
-      throw new Error('Replay parsed but no player stats were extracted');
-    }
-    
-    // Step 7: Insert into database
-    console.log('[Step 7] Inserting data into database...');
-    const result = await insertMatchData(supabase, matchData, replay_upload_id);
-    
-    console.log('[Step 7] Database insertion results:');
-    console.log(`  - Match ID: ${result.match_id}`);
-    console.log(`  - Players inserted: ${result.players_inserted}`);
-    console.log(`  - Stats inserted: ${result.stats_inserted}`);
-    
-    // Validate insertion
-    if (result.players_inserted === 0 || result.stats_inserted === 0) {
-      throw new Error(`Database insertion failed: ${result.players_inserted} players, ${result.stats_inserted} stats inserted`);
-    }
-    
-    // Step 8: Update status to complete
-    console.log('[Step 8] Updating status to complete...');
-    await supabase
-      .from('replay_uploads')
-      .update({
-        status: 'complete',
+    try {
+      const { parseReplayFile } = require('./parseReplay');
+      const matchData = await parseReplayFile(tmp_path);
+      
+      console.log('[Step 6] Match data parsed:');
+      console.log(`  - Players: ${matchData.players.length}`);
+      console.log(`  - Radiant win: ${matchData.radiant_win}`);
+      console.log(`  - Duration: ${matchData.duration}s`);
+      console.log('[Step 6] Player data:');
+      console.log(JSON.stringify(matchData.players.slice(0, 2), null, 2)); // Show first 2 players
+      
+      if (matchData.players.length === 0) {
+        throw new Error('Replay parsed but no player stats were extracted');
+      }
+      
+      // Step 7: Insert into database
+      console.log('[Step 7] Inserting data into database...');
+      const result = await insertMatchData(supabase, matchData, replay_upload_id);
+      
+      console.log('[Step 7] Database insertion results:');
+      console.log(`  - Match ID: ${result.match_id}`);
+      console.log(`  - Players inserted: ${result.players_inserted}`);
+      console.log(`  - Stats inserted: ${result.stats_inserted}`);
+      
+      // Validate insertion
+      if (result.players_inserted === 0 || result.stats_inserted === 0) {
+        throw new Error(`Database insertion failed: ${result.players_inserted} players, ${result.stats_inserted} stats inserted`);
+      }
+      
+      // Step 8: Update status to complete
+      console.log('[Step 8] Updating status to complete...');
+      await supabase
+        .from('replay_uploads')
+        .update({
+          status: 'complete',
+          match_id: result.match_id,
+          parsed_at: new Date().toISOString()
+        })
+        .eq('id', replay_upload_id);
+      
+      console.log(`✅ Successfully parsed replay! Match ID: ${result.match_id}`);
+      
+      res.json({
+        success: true,
         match_id: result.match_id,
-        parsed_at: new Date().toISOString()
-      })
-      .eq('id', replay_upload_id);
-    
-    console.log(`✅ Successfully parsed replay! Match ID: ${result.match_id}`);
-    
-    res.json({
-      success: true,
-      match_id: result.match_id,
-      players_inserted: result.players_inserted,
-      stats_inserted: result.stats_inserted,
-      parsed_player_count: matchData.players.length,
-      inserted_players_count: result.players_inserted,
-      inserted_player_match_stats_count: result.stats_inserted,
-      inserted_match_count: 1
-    });
+        players_inserted: result.players_inserted,
+        stats_inserted: result.stats_inserted,
+        parsed_player_count: matchData.players.length,
+        inserted_players_count: result.players_inserted,
+        inserted_player_match_stats_count: result.stats_inserted,
+        inserted_match_count: 1,
+        parsing_method: 'manta'
+      });
+      
+    } catch (parseError) {
+      console.error('[Step 5] ❌ Real parsing failed:', parseError.message);
+      
+      // Mark as failed with clear error
+      await supabase
+        .from('replay_uploads')
+        .update({
+          status: 'failed',
+          error_message: `Real .dem parsing failed: ${parseError.message}`
+        })
+        .eq('id', replay_upload_id);
+      
+      throw new Error(`Real .dem parsing not yet functional: ${parseError.message}. Please use CSV upload for now.`);
+    }
     
   } catch (error) {
     console.error(`❌ Error: ${error.message}`);
