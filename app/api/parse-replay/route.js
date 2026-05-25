@@ -74,12 +74,14 @@ export async function POST(request) {
       parsedData = await parseReplayWithExternalService(tmpPath)
     } catch (parserError) {
       // Parser not connected yet - update status and return
+      console.error('[Parser Error]', parserError.message)
+      console.error('[Parser Error Stack]', parserError.stack)
       await supabase
         .from('replay_uploads')
         .update({ 
           status: 'parser_pending',
           match_id: matchId,
-          error_message: 'Parser service not connected'
+          error_message: parserError.message
         })
         .eq('id', uploadId)
 
