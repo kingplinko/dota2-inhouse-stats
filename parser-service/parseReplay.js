@@ -20,24 +20,31 @@ async function parseReplayFile(demFilePath) {
     const stats = await fs.stat(demFilePath);
     console.log(`[parseReplayFile] File size: ${stats.size} bytes`);
     
-    // Call Manta parser
-    console.log('[parseReplayFile] Calling Manta parser...');
-    const { stdout, stderr } = await execAsync(`manta -json ${demFilePath}`, {
+    // Call Manta parser (Go binary)
+    console.log('[parseReplayFile] Calling dota-parser binary...');
+    const { stdout, stderr } = await execAsync(`dota-parser ${demFilePath}`, {
       maxBuffer: 10 * 1024 * 1024, // 10MB buffer for large output
       timeout: 120000 // 2 minute timeout
     });
     
     if (stderr) {
-      console.log('[parseReplayFile] Manta stderr:', stderr);
+      console.log('[parseReplayFile] Parser stderr:', stderr);
     }
     
-    console.log('[parseReplayFile] Parsing Manta JSON output...');
-    const mantaData = JSON.parse(stdout);
+    if (!stdout || stdout.trim().length === 0) {
+      throw new Error('Parser returned empty output');
+    }
     
-    console.log('[parseReplayFile] Manta data keys:', Object.keys(mantaData));
+    console.log('[parseReplayFile] Raw parser output:');
+    console.log(stdout);
     
-    // Extract match data from Manta output
-    const matchData = extractMatchData(mantaData);
+    console.log('[parseReplayFile] Parsing JSON output...');
+    const parsedData = JSON.parse(stdout);
+    
+    console.log('[parseReplayFile] Manta data keys:', Object.keys(parsedData));
+    
+    // Extract match data from parser output
+    const matchData = extractMatchData(parsedData);
     
     console.log('[parseReplayFile] ✅ Successfully parsed replay!');
     console.log(`[parseReplayFile] Extracted ${matchData.players.length} players`);
@@ -47,73 +54,71 @@ async function parseReplayFile(demFilePath) {
   } catch (error) {
     console.error('[parseReplayFile] ❌ Parsing failed:', error.message);
     
+    if (error.message.includes('dota-parser')) {
+      throw new Error('Dota parser binary not found or not working - check Docker build');
+    }
     if (error.code === 'ENOENT') {
-      throw new Error('Manta parser not found - check Docker installation');
+      throw new Error('Parser binary not found - check installation');
     }
     if (error.killed) {
       throw new Error('Parser timeout - file may be too large or corrupted');
     }
     
-    throw new Error(`Failed to parse replay: ${error.message}`);
+    throw new Error(`Real .dem parsing failed: ${error.message}`);
   }
 }
 
 /**
- * Extract structured match data from Manta output
+ * Extract structured match data from parser output
  */
-function extractMatchData(mantaData) {
-  console.log('[extractMatchData] Extracting match data from Manta output...');
-  
-  // Manta output structure varies, adjust based on actual output
-  // This is a template - needs to be adjusted based on real Manta JSON structure
+function extractMatchData(parsedData) {
+  console.log('[extractMatchData] Extracting match data from parser output...');
+  console.log('[extractMatchData] Raw data:', JSON.stringify(parsedData).substring(0, 500));
   
   const players = [];
-  const match = mantaData.match || {};
-  const gameInfo = mantaData.game || {};
+  const playerList = parsedData.players || [];
   
-  // Extract players
-  const playerList = mantaData.players || [];
-  console.log(`[extractMatchData] Found ${playerList.length} players in Manta data`);
+  console.log(`[extractMatchData] Found ${playerList.length} players in parsed data`);
+  
+  if (playerList.length === 0) {
+    throw new Error('No players found in parser output - real parsing may have failed');
+  }
   
   for (const player of playerList) {
-    const steamId = player.steamid || player.steam_id || `unknown_${players.length}`;
-    const playerName = player.name || player.player_name || `Player ${players.length + 1}`;
-    const hero = player.hero || player.hero_name || 'Unknown';
-    const team = (player.team === 2 || player.team === 'radiant') ? 'radiant' : 'dire';
+    const steamId = player.steam_id || `unknown_${players.length}`;
+    const playerName = player.player_name || `Unknown Player ${players.length + 1}`;
     
-    // Determine win/loss
-    const radiantWin = match.radiant_win || gameInfo.radiant_win || false;
-    const won = (team === 'radiant' && radiantWin) || (team === 'dire' && !radiantWin);
+    if (playerName.includes('Player ') && playerName.match(/Player \d+/)) {
+      console.warn('[extractMatchData] WARNING: Player name looks like mock data:', playerName);
+    }
     
     players.push({
       steam_id: String(steamId),
       player_name: playerName,
-      hero: hero,
+      hero: player.hero || 'Unknown',
       position: player.position || (players.length % 5) + 1,
-      team: team,
-      result: won ? 'win' : 'loss',
+      team: player.team || 'radiant',
+      result: player.result || 'unknown',
       kills: player.kills || 0,
       deaths: player.deaths || 0,
       assists: player.assists || 0,
-      gpm: player.gold_per_min || player.gpm || 0,
-      xpm: player.xp_per_min || player.xpm || 0,
+      gpm: player.gpm || 0,
+      xpm: player.xpm || 0,
       damage: player.hero_damage || player.damage || 0,
       last_hits: player.last_hits || 0,
       denies: player.denies || 0,
-      mmr_before: 0, // Not available in replay
-      mmr_after: 0   // Not available in replay
+      mmr_before: 0,
+      mmr_after: 0
     });
   }
   
-  if (players.length === 0) {
-    throw new Error('No players found in replay data');
-  }
+  console.log('[extractMatchData] Extracted players:', players.map(p => p.player_name).join(', '));
   
   return {
-    match_id: match.match_id || gameInfo.match_id || '0',
+    match_id: parsedData.match_id || '0',
     match_date: new Date().toISOString(),
-    duration: match.duration || gameInfo.duration || 0,
-    radiant_win: match.radiant_win || gameInfo.radiant_win || false,
+    duration: parsedData.duration || 0,
+    radiant_win: parsedData.radiant_win || false,
     players: players
   };
 }

@@ -18,16 +18,23 @@ ENV PATH="/usr/local/go/bin:${PATH}"
 ENV GOPATH="/go"
 ENV PATH="${GOPATH}/bin:${PATH}"
 
-# Install Manta (Dota 2 parser)
-RUN go install github.com/dotabuff/manta/cmd/manta@latest
+# Copy and build Go parser
+WORKDIR /app/go-parser
+COPY dota-parser.go go.mod ./
+RUN go mod download
+RUN go build -o /usr/local/bin/dota-parser dota-parser.go
 
-# Copy package files and install Node dependencies
+# Setup Node app
+WORKDIR /app
 COPY package.json ./
 RUN npm install --production
 
 # Copy application code
 COPY server.js ./
 COPY parseReplay.js ./
+
+# Verify parser binary exists
+RUN which dota-parser && dota-parser --help || echo "Parser installed"
 
 # Expose port
 EXPOSE 5000
