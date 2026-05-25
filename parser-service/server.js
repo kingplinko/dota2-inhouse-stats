@@ -1,6 +1,5 @@
 const express = require('express');
 const cors = require('cors');
-const { createClient } = require('@supabase/supabase-js');
 
 const app = express();
 app.use(cors());
@@ -8,8 +7,14 @@ app.use(express.json());
 
 const PORT = process.env.PORT || 5000;
 
-// Initialize Supabase
+// Lazy load Supabase to avoid startup crashes
+let supabaseClient = null;
+
 function getSupabase() {
+  if (supabaseClient) {
+    return supabaseClient;
+  }
+  
   const url = process.env.SUPABASE_URL;
   const key = process.env.SUPABASE_KEY;
   
@@ -17,11 +22,23 @@ function getSupabase() {
     throw new Error('SUPABASE_URL and SUPABASE_KEY must be set');
   }
   
-  return createClient(url, key);
+  const { createClient } = require('@supabase/supabase-js');
+  supabaseClient = createClient(url, key);
+  return supabaseClient;
 }
 
 app.get('/health', (req, res) => {
   res.json({ status: 'healthy', service: 'dota2-parser' });
+});
+
+app.get('/', (req, res) => {
+  res.json({ 
+    service: 'dota2-parser',
+    endpoints: {
+      health: '/health',
+      parseReplay: 'POST /parse-replay'
+    }
+  });
 });
 
 app.post('/parse-replay', async (req, res) => {
@@ -269,8 +286,21 @@ async function insertMatchData(supabase, matchData, replayUploadId) {
 }
 
 app.listen(PORT, '0.0.0.0', () => {
-  console.log(`✅ Dota 2 Parser Service listening on port ${PORT}`);
-  console.log(`Health endpoint: http://0.0.0.0:${PORT}/health`);
-  console.log(`Parse endpoint: http://0.0.0.0:${PORT}/parse-replay`);
-  console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
+  console.log('='.repeat(50));
+  console.log(`✅ Dota 2 Parser Service STARTED`);
+  console.log(`Port: ${PORT}`);
+  console.log(`Health: http://0.0.0.0:${PORT}/health`);
+  console.log(`Parse: http://0.0.0.0:${PORT}/parse-replay`);
+  console.log(`Supabase URL: ${process.env.SUPABASE_URL ? 'SET' : 'NOT SET'}`);
+  console.log(`Supabase KEY: ${process.env.SUPABASE_KEY ? 'SET' : 'NOT SET'}`);
+  console.log('='.repeat(50));
+});
+
+// Handle uncaught errors
+process.on('uncaughtException', (error) => {
+  console.error('❌ Uncaught Exception:', error);
+});
+
+process.on('unhandledRejection', (error) => {
+  console.error('❌ Unhandled Rejection:', error);
 });
