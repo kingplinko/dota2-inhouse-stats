@@ -190,6 +190,7 @@ function generateMockMatchData(filename) {
     const position = (i % 5) + 1;
     
     players.push({
+      steam_id: `7656119800000000${i}`, // Mock Steam ID
       player_name: `Player ${i + 1}`,
       hero: heroes[i],
       position: position,
@@ -202,9 +203,9 @@ function generateMockMatchData(filename) {
       denies: Math.floor(Math.random() * 30),
       gpm: Math.floor(Math.random() * 400) + 300,
       xpm: Math.floor(Math.random() * 400) + 400,
-      hero_damage: Math.floor(Math.random() * 30000) + 10000,
-      tower_damage: Math.floor(Math.random() * 5000),
-      hero_healing: Math.floor(Math.random() * 3000)
+      damage: Math.floor(Math.random() * 30000) + 10000,
+      mmr_before: 3000 + Math.floor(Math.random() * 2000),
+      mmr_after: 3000 + Math.floor(Math.random() * 2000)
     });
   }
   
@@ -304,20 +305,20 @@ async function insertMatchData(supabase, matchData, replayUploadId) {
       // Insert player match stats
       const statsData = {
         match_id: matchId,
-        player_id: player.id,
+        steam_id: playerData.steam_id,
+        player_name: playerData.player_name,
         hero: playerData.hero,
         position: playerData.position,
         team: playerData.team,
+        result: playerData.result,
         kills: playerData.kills,
         deaths: playerData.deaths,
         assists: playerData.assists,
-        last_hits: playerData.last_hits,
-        denies: playerData.denies,
         gpm: playerData.gpm,
         xpm: playerData.xpm,
-        hero_damage: playerData.hero_damage,
-        tower_damage: playerData.tower_damage,
-        hero_healing: playerData.hero_healing
+        damage: playerData.damage,
+        mmr_before: playerData.mmr_before,
+        mmr_after: playerData.mmr_after
       };
       
       console.log(`[insertMatchData] Inserting stats:`, JSON.stringify(statsData));
