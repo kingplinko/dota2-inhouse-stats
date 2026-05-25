@@ -22,8 +22,9 @@ ENV PATH="${GOPATH}/bin:${PATH}"
 WORKDIR /app/go-parser
 COPY dota-parser.go go.mod ./
 
-# Download dependencies - this creates go.sum automatically
-RUN go mod download
+# Download dependencies and create go.sum
+RUN go mod download github.com/dotabuff/manta
+RUN go mod tidy
 RUN go mod verify
 
 # Build the parser binary with verbose output
