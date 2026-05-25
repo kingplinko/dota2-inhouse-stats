@@ -64,21 +64,33 @@ export default function ReplayUploadPage() {
       setMessage('Triggering parse process...')
       setUploadStatus('parsing')
 
-      // 3. Trigger parsing
-      // Trigger parsing (don't wait for response, it's async)
-      fetch('/api/parse-replay', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          uploadId: uploadRecord.id,
-          filePath: filePath
+      // 3. Trigger parsing and wait for response
+      try {
+        const parseResponse = await fetch('/api/parse-replay', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            replay_upload_id: uploadRecord.id
+          })
         })
-      }).catch(err => console.error('Parse trigger error:', err))
 
-      // Show success immediately
-      setUploadStatus('parser_pending')
-      setMessage('✅ Replay uploaded successfully, but stats have not been extracted yet because the parser service is not connected.')
-      setMessageType('success')
+        const parseResult = await parseResponse.json()
+        
+        if (parseResult.success) {
+          setUploadStatus('complete')
+          setMessage(parseResult.message || '✅ Replay parsed successfully! Check the leaderboard.')
+          setMessageType('success')
+        } else {
+          setUploadStatus('failed')
+          setMessage(`Parse error: ${parseResult.error}`)
+          setMessageType('error')
+        }
+      } catch (parseError) {
+        console.error('Parse trigger error:', parseError)
+        setUploadStatus('parser_pending')
+        setMessage('⚠️ Replay uploaded but parsing failed. Check logs.')
+        setMessageType('error')
+      }
 
       setFile(null)
       e.target.reset()
