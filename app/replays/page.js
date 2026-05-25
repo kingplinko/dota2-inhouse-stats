@@ -82,13 +82,25 @@ export default function ReplayUploadPage() {
           setMessageType('success')
         } else {
           setUploadStatus('failed')
-          setMessage(`Parse error: ${parseResult.error}`)
+          setMessage(`❌ Parse error: ${parseResult.error}${parseResult.details ? '\n' + parseResult.details : ''}`)
           setMessageType('error')
         }
       } catch (parseError) {
         console.error('Parse trigger error:', parseError)
-        setUploadStatus('parser_pending')
-        setMessage('⚠️ Replay uploaded but parsing failed. Check logs.')
+        
+        // Try to extract detailed error from response
+        let errorDetail = parseError.message
+        if (parseError.response) {
+          try {
+            const errorBody = await parseError.response.json()
+            errorDetail = errorBody.error || errorBody.message || parseError.message
+          } catch (e) {
+            errorDetail = `HTTP ${parseError.response.status}: ${parseError.message}`
+          }
+        }
+        
+        setUploadStatus('failed')
+        setMessage(`❌ Parse error: ${errorDetail}`)
         setMessageType('error')
       }
 
