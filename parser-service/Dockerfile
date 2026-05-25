@@ -18,11 +18,20 @@ ENV PATH="/usr/local/go/bin:${PATH}"
 ENV GOPATH="/go"
 ENV PATH="${GOPATH}/bin:${PATH}"
 
-# Copy and build Go parser
+# Copy Go files
 WORKDIR /app/go-parser
 COPY dota-parser.go go.mod ./
+
+# Download dependencies - this creates go.sum automatically
 RUN go mod download
-RUN go build -o /usr/local/bin/dota-parser dota-parser.go
+RUN go mod verify
+
+# Build the parser binary with verbose output
+RUN go build -v -o /usr/local/bin/dota-parser dota-parser.go || (echo "Build failed" && exit 1)
+
+# Verify binary was created
+RUN ls -lh /usr/local/bin/dota-parser
+RUN chmod +x /usr/local/bin/dota-parser
 
 # Setup Node app
 WORKDIR /app
